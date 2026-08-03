@@ -28,7 +28,78 @@ for(let i=0;i<4;i++){const n=CHANNELS[i];stack.insertAdjacentHTML('beforeend',`<
 function sci(v){if(!Number.isFinite(v))return'—';if(v===0)return'0';return Math.abs(v)>=1e-3&&Math.abs(v)<1e3?v.toLocaleString('uk-UA',{maximumSignificantDigits:4}):v.toExponential(3)}
 function detail(ch,v){return ch==='ACC'?`${sci(v)} м/с² · ${sci(v/G)} g`:`${sci(v)} м/с · ${sci(v*1000)} мм/с`}
 function timeText(ms,full=false){if(!Number.isFinite(ms))return'—';return new Date(ms).toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit',second:'2-digit',fractionalSecondDigits:full?3:undefined})}
-const charts={};for(const n of CHANNELS){charts[n]=new Chart(document.getElementById(n),{type:'line',data:{datasets:[{data:[],borderColor:'#4db2ff',borderWidth:1.05,pointRadius:0,tension:0,spanGaps:false}]},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,plugins:{legend:{display:false},tooltip:{displayColors:false,callbacks:{title:x=>x.length?timeText(x[0].parsed.x,true):'',label:c=>detail(n,c.parsed.y)}}},scales:{x:{type:'linear',ticks:{maxTicksLimit:9,color:'#94a7c5',callback:v=>timeText(Number(v))},grid:{color:'rgba(147,169,204,.14)'},title:{display:true,text:'Час',color:'#94a7c5'}},y:{grace:'8%',ticks:{color:'#94a7c5',callback:v=>sci(Number(v))},grid:{color:'rgba(147,169,204,.14)'},title:{display:true,text:n==='ACC'?'м/с²':'м/с',color:'#94a7c5'}}}}})}
+const charts={};
+for(const n of CHANNELS){
+  charts[n]=new Chart(document.getElementById(n),{
+    type:'line',
+    data:{datasets:[
+      {
+        label:'Мінімум',
+        data:[],
+        borderColor:'rgba(77,178,255,0)',
+        backgroundColor:'rgba(77,178,255,0.14)',
+        borderWidth:0,
+        pointRadius:0,
+        tension:0,
+        fill:false
+      },
+      {
+        label:'Діапазон min–max',
+        data:[],
+        borderColor:'rgba(77,178,255,0)',
+        backgroundColor:'rgba(77,178,255,0.14)',
+        borderWidth:0,
+        pointRadius:0,
+        tension:0,
+        fill:'-1'
+      },
+      {
+        label:'Сигнал',
+        data:[],
+        borderColor:'#4db2ff',
+        backgroundColor:'rgba(77,178,255,0)',
+        borderWidth:1.15,
+        pointRadius:0,
+        pointHitRadius:7,
+        tension:0,
+        spanGaps:false
+      }
+    ]},
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      animation:false,
+      parsing:false,
+      normalized:true,
+      interaction:{mode:'nearest',intersect:false,axis:'x'},
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          displayColors:false,
+          filter:item=>item.datasetIndex===2,
+          callbacks:{
+            title:x=>x.length?timeText(x[0].parsed.x,true):'',
+            label:c=>detail(n,c.parsed.y)
+          }
+        }
+      },
+      scales:{
+        x:{
+          type:'linear',
+          ticks:{maxTicksLimit:9,color:'#94a7c5',callback:v=>timeText(Number(v))},
+          grid:{color:'rgba(147,169,204,.14)'},
+          title:{display:true,text:'Час',color:'#94a7c5'}
+        },
+        y:{
+          grace:'8%',
+          ticks:{color:'#94a7c5',callback:v=>sci(Number(v))},
+          grid:{color:'rgba(147,169,204,.14)'},
+          title:{display:true,text:n==='ACC'?'м/с²':'м/с',color:'#94a7c5'}
+        }
+      }
+    }
+  })
+}
 function validRecord(r){return Array.isArray(r)&&r.length>=27&&Number.isFinite(Number(r[0]))}
 function applyPointEvent(ev){const p=JSON.parse(ev.data),path=p.path,data=p.data;if(path==='/'){pointsBySlot.clear();if(data)for(const [k,v]of Object.entries(data))if(validRecord(v))pointsBySlot.set(k,v)}else{const k=path.replace(/^\//,'');if(data===null)pointsBySlot.delete(k);else if(validRecord(data))pointsBySlot.set(k,data)}dirty=true}
 function applyPointPatch(ev){const p=JSON.parse(ev.data);if(p.path==='/'){for(const[k,v]of Object.entries(p.data||{})){if(v===null)pointsBySlot.delete(k);else if(validRecord(v))pointsBySlot.set(k,v)}}else applyPointEvent(ev);dirty=true}
@@ -36,7 +107,84 @@ function applyStatus(ev){const p=JSON.parse(ev.data);if(p.path==='/')status=p.da
 function connect(){if(paused||document.hidden)return;closeStreams();pointSource=new EventSource(DB+'/public/points.json');pointSource.addEventListener('put',applyPointEvent);pointSource.addEventListener('patch',applyPointPatch);pointSource.onerror=()=>{document.getElementById('meta').textContent='Повторне підключення до Firebase…'};statusSource=new EventSource(DB+'/public/status.json');statusSource.addEventListener('put',applyStatus);statusSource.addEventListener('patch',applyStatus)}
 function closeStreams(){if(pointSource){pointSource.close();pointSource=null}if(statusSource){statusSource.close();statusSource=null}}
 function statBox(l,v,t=''){return`<div class="stat" title="${t||v}"><div class="stat-label">${l}</div><div class="stat-value">${v}</div></div>`}
-function render(){if(!dirty)return;dirty=false;const records=[...pointsBySlot.values()].filter(validRecord).sort((a,b)=>Number(a[0])-Number(b[0]));const newest=records.length?Number(records.at(-1)[0]):Date.now(),win=Number(document.getElementById('window').value),cut=newest-win*1000,visible=records.filter(r=>Number(r[0])>=cut);for(let c=0;c<4;c++){const n=CHANNELS[c],base=2+c*6,series=[];let min=Infinity,max=-Infinity,peak=null,latest=NaN,sumSq=0,count=0;for(const r of visible){const t0=Number(r[0]),cnt=Number(r[1]),a={x:t0+Number(r[base]),y:Number(r[base+1])},b={x:t0+Number(r[base+2]),y:Number(r[base+3])};series.push(a,b);if(a.y<min)min=a.y;if(b.y<min)min=b.y;if(a.y>max)max=a.y;if(b.y>max)max=b.y;if(!peak||Math.abs(a.y)>Math.abs(peak.y))peak=a;if(!peak||Math.abs(b.y)>Math.abs(peak.y))peak=b;latest=Number(r[base+4]);const rms=Number(r[base+5]);sumSq+=rms*rms*cnt;count+=cnt}series.sort((a,b)=>a.x-b.x);charts[n].data.datasets[0].data=series;charts[n].update('none');const rms=count?Math.sqrt(sumSq/count):NaN;document.getElementById('stats-'+n).innerHTML=[statBox('Поточне',detail(n,latest)),statBox('Макс. |значення|',peak?detail(n,Math.abs(peak.y)):'—',peak?timeText(peak.x,true):''),statBox('RMS',detail(n,rms)),statBox('Мінімум',detail(n,min)),statBox('Максимум',detail(n,max)),statBox('Точок / інтервал',`${series.length} / ${win} с`)].join('')}
-const age=Number.isFinite(Number(status.updated_ms))?(Date.now()-Number(status.updated_ms))/1000:null,online=Boolean(status.station_online)&&age!==null&&age<5;document.getElementById('dot').classList.toggle('ok',online);document.getElementById('statusText').textContent=online?'Станція онлайн':'Станція офлайн';document.getElementById('meta').textContent=`Firebase live · крок 0,1 с · показано ${win} с`;document.getElementById('stationTime').textContent=Number.isFinite(Number(status.station_time_ms))?new Date(Number(status.station_time_ms)).toLocaleString('uk-UA'):'—';document.getElementById('sampleRate').textContent=status.sample_rate_hz?`${Number(status.sample_rate_hz).toLocaleString('uk-UA')} Гц`:'—';document.getElementById('gps').textContent=status.gps_ok===true?'Синхронізовано':status.gps_ok===false?'Немає сигналу':'—';document.getElementById('age').textContent=age===null?'—':`${Math.max(0,age).toFixed(1)} с тому`}
+function render(){
+  if(!dirty)return;
+  dirty=false;
+
+  const records=[...pointsBySlot.values()]
+    .filter(validRecord)
+    .sort((a,b)=>Number(a[0])-Number(b[0]));
+
+  const newest=records.length?Number(records.at(-1)[0]):Date.now();
+  const win=Number(document.getElementById('window').value);
+  const cut=newest-win*1000;
+  const visible=records.filter(r=>Number(r[0])>=cut);
+  const bucketMs=Math.max(1,Number(status.bucket_seconds||0.1)*1000);
+
+  for(let c=0;c<4;c++){
+    const n=CHANNELS[c];
+    const base=2+c*6;
+    const lower=[];
+    const upper=[];
+    const signal=[];
+    let min=Infinity,max=-Infinity,peak=null,latest=NaN,sumSq=0,count=0;
+
+    for(const r of visible){
+      const t0=Number(r[0]);
+      const center=t0+bucketMs/2;
+      const end=t0+bucketMs;
+      const minValue=Number(r[base+1]);
+      const maxValue=Number(r[base+3]);
+      const lastValue=Number(r[base+4]);
+      const rmsValue=Number(r[base+5]);
+      const samples=Number(r[1]);
+
+      lower.push({x:center,y:minValue});
+      upper.push({x:center,y:maxValue});
+      signal.push({x:end,y:lastValue});
+
+      if(minValue<min)min=minValue;
+      if(maxValue>max)max=maxValue;
+      const minPoint={x:t0+Number(r[base]),y:minValue};
+      const maxPoint={x:t0+Number(r[base+2]),y:maxValue};
+      if(!peak||Math.abs(minPoint.y)>Math.abs(peak.y))peak=minPoint;
+      if(!peak||Math.abs(maxPoint.y)>Math.abs(peak.y))peak=maxPoint;
+      latest=lastValue;
+      sumSq+=rmsValue*rmsValue*samples;
+      count+=samples;
+    }
+
+    charts[n].data.datasets[0].data=lower;
+    charts[n].data.datasets[1].data=upper;
+    charts[n].data.datasets[2].data=signal;
+    charts[n].options.scales.x.min=cut;
+    charts[n].options.scales.x.max=newest+bucketMs;
+    charts[n].update('none');
+
+    const rms=count?Math.sqrt(sumSq/count):NaN;
+    document.getElementById('stats-'+n).innerHTML=[
+      statBox('Поточне',detail(n,latest)),
+      statBox('Макс. |значення|',peak?detail(n,Math.abs(peak.y)):'—',peak?timeText(peak.x,true):''),
+      statBox('RMS',detail(n,rms)),
+      statBox('Мінімум',Number.isFinite(min)?detail(n,min):'—'),
+      statBox('Максимум',Number.isFinite(max)?detail(n,max):'—'),
+      statBox('Пакетів / інтервал',`${visible.length} / ${win} с`)
+    ].join('')
+  }
+
+  const age=Number.isFinite(Number(status.updated_ms))
+    ?(Date.now()-Number(status.updated_ms))/1000:null;
+  const online=Boolean(status.station_online)&&age!==null&&age<5;
+  document.getElementById('dot').classList.toggle('ok',online);
+  document.getElementById('statusText').textContent=online?'Станція онлайн':'Станція офлайн';
+  document.getElementById('meta').textContent=`Firebase live · крок ${(bucketMs/1000).toLocaleString('uk-UA')} с · лінія + діапазон min–max · показано ${win} с`;
+  document.getElementById('stationTime').textContent=Number.isFinite(Number(status.station_time_ms))
+    ?new Date(Number(status.station_time_ms)).toLocaleString('uk-UA'):'—';
+  document.getElementById('sampleRate').textContent=status.sample_rate_hz
+    ?`${Number(status.sample_rate_hz).toLocaleString('uk-UA')} Гц`:'—';
+  document.getElementById('gps').textContent=status.gps_ok===true
+    ?'Синхронізовано':status.gps_ok===false?'Немає сигналу':'—';
+  document.getElementById('age').textContent=age===null?'—':`${Math.max(0,age).toFixed(1)} с тому`;
+}
 setInterval(render,100);setInterval(()=>{dirty=true},1000);document.getElementById('window').addEventListener('change',()=>dirty=true);document.getElementById('pause').addEventListener('change',e=>{paused=e.target.checked;if(paused){closeStreams();document.getElementById('meta').textContent='Оновлення призупинено'}else connect()});document.addEventListener('visibilitychange',()=>{if(document.hidden)closeStreams();else connect()});connect();
 </script></body></html>
