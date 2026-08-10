@@ -9,20 +9,31 @@
 :root{color-scheme:dark;--bg:#08111f;--panel:#101b2e;--panel2:#0c1728;--text:#edf4ff;--muted:#94a7c5;--border:#263a5c;--ok:#3ddc97;--bad:#ff6b78}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
 .wrap{width:min(1540px,calc(100% - 28px));margin:auto;padding:18px 0 34px}.top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px;margin-bottom:14px}h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}.meta{color:var(--muted);font-size:14px}.controls{display:flex;flex-wrap:wrap;gap:9px;align-items:center}.badge,.control{min-height:38px;display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--border);border-radius:10px;background:var(--panel);font-size:14px}.control select{border:0;background:transparent;color:var(--text);font:inherit}.dot{width:10px;height:10px;border-radius:50%;background:var(--bad)}.dot.ok{background:var(--ok)}
-.summary{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:10px;margin-bottom:14px}.summary-item{padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}.label{color:var(--muted);font-size:12px;margin-bottom:4px}.value{font-size:15px;font-weight:650}.stack{display:grid;gap:14px}.card{padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--panel)}.head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin-bottom:10px}.title h2{margin:0 0 4px;font-size:18px}.unit{color:var(--muted);font-size:13px}.stats{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px;flex:1 1 900px}.stat{padding:8px 10px;border:1px solid rgba(118,149,192,.22);border-radius:9px;background:var(--panel2);min-width:0}.stat-label{color:var(--muted);font-size:11px;margin-bottom:3px}.stat-value{font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chart-box{height:340px}.footer{margin-top:13px;color:var(--muted);font-size:12px;text-align:center}
-@media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(3,1fr)}}@media(max-width:650px){.summary{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.chart-box{height:270px}}
+.summary{display:grid;grid-template-columns:repeat(3,minmax(170px,1fr));gap:10px;margin-bottom:14px}.summary-item{padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}.label{color:var(--muted);font-size:12px;margin-bottom:4px}.value{font-size:15px;font-weight:650}.stack{display:grid;gap:14px}.card{padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--panel)}.head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin-bottom:10px}.title h2{margin:0 0 4px;font-size:18px}.unit{color:var(--muted);font-size:13px}.stats{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px;flex:1 1 900px}.stat{padding:8px 10px;border:1px solid rgba(118,149,192,.22);border-radius:9px;background:var(--panel2);min-width:0}.stat-label{color:var(--muted);font-size:11px;margin-bottom:3px}.stat-value{font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chart-box{height:340px}.freq-grid{display:grid;grid-template-columns:repeat(8,minmax(115px,1fr));gap:8px;margin:2px 0 12px}.freq-item{padding:10px 11px;border:1px solid rgba(118,149,192,.22);border-radius:10px;background:var(--panel2);min-width:0}.freq-id{color:var(--muted);font-size:11px;margin-bottom:3px}.freq-value{font-size:16px;font-weight:700}.freq-shift{color:var(--muted);font-size:11px;margin-top:4px}.modal-meta{color:var(--muted);font-size:12px;align-self:flex-end}.modal-chart{height:360px}.footer{margin-top:13px;color:var(--muted);font-size:12px;text-align:center}
+@media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(3,1fr)}.freq-grid{grid-template-columns:repeat(4,1fr)}}@media(max-width:650px){.summary{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.freq-grid{grid-template-columns:repeat(2,1fr)}.chart-box{height:270px}.modal-chart{height:300px}}
 </style>
 </head>
 <body><div class="wrap">
 <div class="top"><div><h1>Онлайн-моніторинг ZIR-8</h1><div class="meta" id="meta">Підключення до Firebase…</div></div>
 <div class="controls"><label class="control">Інтервал: <select id="window"><option value="10">10 секунд</option><option value="60" selected>1 хвилина</option><option value="300">5 хвилин</option></select></label><label class="control"><input type="checkbox" id="pause"> Пауза</label><div class="badge"><span class="dot" id="dot"></span><span id="statusText">Станція офлайн</span></div></div></div>
-<section class="summary"><div class="summary-item"><div class="label">Час станції</div><div class="value" id="stationTime">—</div></div><div class="summary-item"><div class="label">Частота дискретизації</div><div class="value" id="sampleRate">—</div></div><div class="summary-item"><div class="label">GPS</div><div class="value" id="gps">—</div></div><div class="summary-item"><div class="label">Останнє оновлення</div><div class="value" id="age">—</div></div></section>
-<main class="stack" id="stack"></main><div class="footer">Крок live-даних — 0,1 с. Повний потік 4096 Гц зберігається локально у HDF5.</div>
+<section class="summary"><div class="summary-item"><div class="label">Час станції</div><div class="value" id="stationTime">—</div></div><div class="summary-item"><div class="label">Частота дискретизації</div><div class="value" id="sampleRate">—</div></div><div class="summary-item"><div class="label">Останнє оновлення</div><div class="value" id="age">—</div></div></section>
+<main class="stack" id="stack"></main>
+<section class="card" style="margin-top:14px">
+  <div class="head">
+    <div class="title"><h2>Власні частоти</h2><div class="unit">FDD · HHV / HHW / HHU · діапазон 0,5–20 Гц</div></div>
+    <div class="modal-meta" id="modalMeta">Базові значення за 82 HDF5 · очікування нового FDD…</div>
+  </div>
+  <div class="freq-grid" id="freqGrid"></div>
+  <div class="chart-box modal-chart"><canvas id="fddChart"></canvas></div>
+</section>
+<div class="footer" id="footer">Крок live-даних — 0,02 с. Повний потік 4096 Гц зберігається локально у HDF5.</div>
 </div>
 <script>
 const DB="https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app";
 const CHANNELS=["HHV","HHW","HHU","ACC"], UNITS=["м/с","м/с","м/с","м/с²"], G=9.80665;
-const pointsBySlot=new Map(); let status={}, pointSource=null,statusSource=null,dirty=true,paused=false;
+const pointsBySlot=new Map();
+const BASELINE_FREQS=[1.000000,1.906250,2.406250,2.937500,3.359375,3.710938,4.109375,5.007812];
+let status={}, modal={}, pointSource=null,statusSource=null,modalSource=null,dirty=true,paused=false;
 const stack=document.getElementById('stack');
 for(let i=0;i<4;i++){const n=CHANNELS[i];stack.insertAdjacentHTML('beforeend',`<section class="card"><div class="head"><div class="title"><h2>${n}</h2><div class="unit">${i===3?'Прискорення':'Швидкість'}, ${UNITS[i]}</div></div><div class="stats" id="stats-${n}"></div></div><div class="chart-box"><canvas id="${n}"></canvas></div></section>`)}
 function sci(v){if(!Number.isFinite(v))return'—';if(v===0)return'0';return Math.abs(v)>=1e-3&&Math.abs(v)<1e3?v.toLocaleString('uk-UA',{maximumSignificantDigits:4}):v.toExponential(3)}
@@ -100,13 +111,76 @@ for(const n of CHANNELS){
     }
   })
 }
+const fddChart=new Chart(document.getElementById('fddChart'),{
+  type:'line',
+  data:{datasets:[
+    {label:'FDD',data:[],borderColor:'#4db2ff',borderWidth:1.35,pointRadius:0,tension:0,spanGaps:false},
+    {label:'Власні частоти',type:'scatter',data:[],backgroundColor:'#3ddc97',borderColor:'#3ddc97',pointRadius:4.5,pointHoverRadius:6}
+  ]},
+  options:{
+    responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,
+    interaction:{mode:'nearest',intersect:false},
+    plugins:{
+      legend:{display:true,labels:{color:'#94a7c5',usePointStyle:true,boxWidth:9}},
+      tooltip:{displayColors:false,callbacks:{
+        title:items=>items.length?`${Number(items[0].parsed.x).toLocaleString('uk-UA',{minimumFractionDigits:3,maximumFractionDigits:3})} Гц`:'',
+        label:c=>c.datasetIndex===0?`FDD: ${Number(c.parsed.y).toFixed(2)} dB`:`Власна частота: ${Number(c.parsed.x).toFixed(3)} Гц`
+      }}
+    },
+    scales:{
+      x:{type:'linear',min:0.5,max:20,ticks:{color:'#94a7c5',maxTicksLimit:12},grid:{color:'rgba(147,169,204,.14)'},title:{display:true,text:'Частота, Гц',color:'#94a7c5'}},
+      y:{ticks:{color:'#94a7c5'},grid:{color:'rgba(147,169,204,.14)'},title:{display:true,text:'Відносний рівень FDD, dB',color:'#94a7c5'}}
+    }
+  }
+});
 function validRecord(r){return Array.isArray(r)&&r.length>=27&&Number.isFinite(Number(r[0]))}
 function applyPointEvent(ev){const p=JSON.parse(ev.data),path=p.path,data=p.data;if(path==='/'){pointsBySlot.clear();if(data)for(const [k,v]of Object.entries(data))if(validRecord(v))pointsBySlot.set(k,v)}else{const k=path.replace(/^\//,'');if(data===null)pointsBySlot.delete(k);else if(validRecord(data))pointsBySlot.set(k,data)}dirty=true}
 function applyPointPatch(ev){const p=JSON.parse(ev.data);if(p.path==='/'){for(const[k,v]of Object.entries(p.data||{})){if(v===null)pointsBySlot.delete(k);else if(validRecord(v))pointsBySlot.set(k,v)}}else applyPointEvent(ev);dirty=true}
 function applyStatus(ev){const p=JSON.parse(ev.data);if(p.path==='/')status=p.data||{};else status[p.path.replace(/^\//,'')]=p.data;dirty=true}
-function connect(){if(paused||document.hidden)return;closeStreams();pointSource=new EventSource(DB+'/public/points.json');pointSource.addEventListener('put',applyPointEvent);pointSource.addEventListener('patch',applyPointPatch);pointSource.onerror=()=>{document.getElementById('meta').textContent='Повторне підключення до Firebase…'};statusSource=new EventSource(DB+'/public/status.json');statusSource.addEventListener('put',applyStatus);statusSource.addEventListener('patch',applyStatus)}
-function closeStreams(){if(pointSource){pointSource.close();pointSource=null}if(statusSource){statusSource.close();statusSource=null}}
+function applyModal(ev){
+  const p=JSON.parse(ev.data);
+  if(p.path==='/') modal=p.data||{};
+  else {
+    const key=p.path.replace(/^\//,'');
+    if(p.data===null) delete modal[key]; else modal[key]=p.data;
+  }
+  dirty=true;
+}
+function connect(){if(paused||document.hidden)return;closeStreams();pointSource=new EventSource(DB+'/public/points.json');pointSource.addEventListener('put',applyPointEvent);pointSource.addEventListener('patch',applyPointPatch);pointSource.onerror=()=>{document.getElementById('meta').textContent='Повторне підключення до Firebase…'};statusSource=new EventSource(DB+'/public/status.json');statusSource.addEventListener('put',applyStatus);statusSource.addEventListener('patch',applyStatus);modalSource=new EventSource(DB+'/public/modal.json');modalSource.addEventListener('put',applyModal);modalSource.addEventListener('patch',applyModal)}
+function closeStreams(){if(pointSource){pointSource.close();pointSource=null}if(statusSource){statusSource.close();statusSource=null}if(modalSource){modalSource.close();modalSource=null}}
 function statBox(l,v,t=''){return`<div class="stat" title="${t||v}"><div class="stat-label">${l}</div><div class="stat-value">${v}</div></div>`}
+function renderModal(){
+  const tracked=Array.isArray(modal.tracked_modes)?modal.tracked_modes:[];
+  const rows=BASELINE_FREQS.map((base,i)=>{
+    const m=tracked.find(x=>String(x.id||'')===`NF${String(i+1).padStart(2,'0')}`)||tracked[i]||null;
+    const current=m&&Number.isFinite(Number(m.current_hz))?Number(m.current_hz):base;
+    const shift=m&&Number.isFinite(Number(m.shift_pct))?Number(m.shift_pct):null;
+    const visible=m?m.visible!==false:true;
+    return {id:`NF${String(i+1).padStart(2,'0')}`,base,current,shift,visible};
+  });
+  document.getElementById('freqGrid').innerHTML=rows.map(r=>`<div class="freq-item"><div class="freq-id">${r.id}${r.visible?'':' · слабко'}</div><div class="freq-value">${r.current.toLocaleString('uk-UA',{minimumFractionDigits:3,maximumFractionDigits:3})} Гц</div><div class="freq-shift">база ${r.base.toLocaleString('uk-UA',{minimumFractionDigits:3,maximumFractionDigits:3})} Гц${r.shift===null?'':` · Δ ${r.shift>=0?'+':''}${r.shift.toFixed(2)}%`}</div></div>`).join('');
+
+  const spectrum=Array.isArray(modal.spectrum_fdd_db)?modal.spectrum_fdd_db:[];
+  const curve=spectrum.map(p=>Array.isArray(p)&&p.length>=2?{x:Number(p[0]),y:Number(p[1])}:null).filter(p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y));
+  const modePts=[];
+  if(curve.length){
+    for(const r of rows){
+      let best=null;
+      for(const p of curve){if(best===null||Math.abs(p.x-r.current)<Math.abs(best.x-r.current))best=p}
+      if(best) modePts.push({x:r.current,y:best.y});
+    }
+  }
+  fddChart.data.datasets[0].data=curve;
+  fddChart.data.datasets[1].data=modePts;
+  fddChart.update('none');
+
+  const generated=Number(modal.generated_ms);
+  const files=Number(modal.processed_files);
+  const windows=Number(modal.quiet_fdd_windows);
+  document.getElementById('modalMeta').textContent=Number.isFinite(generated)
+    ?`FDD оновлено ${new Date(generated).toLocaleString('uk-UA')} · файлів ${Number.isFinite(files)?files:'—'} · фонових вікон ${Number.isFinite(windows)?windows:'—'}`
+    :'Базові значення за 82 HDF5 · новий FDD з’явиться після закриття HDF5';
+}
 function render(){
   if(!dirty)return;
   dirty=false;
@@ -182,9 +256,9 @@ function render(){
     ?new Date(Number(status.station_time_ms)).toLocaleString('uk-UA'):'—';
   document.getElementById('sampleRate').textContent=status.sample_rate_hz
     ?`${Number(status.sample_rate_hz).toLocaleString('uk-UA')} Гц`:'—';
-  document.getElementById('gps').textContent=status.gps_ok===true
-    ?'Синхронізовано':status.gps_ok===false?'Немає сигналу':'—';
   document.getElementById('age').textContent=age===null?'—':`${Math.max(0,age).toFixed(1)} с тому`;
+  document.getElementById('footer').textContent=`Крок live-даних — ${(bucketMs/1000).toLocaleString('uk-UA')} с. Повний потік 4096 Гц зберігається локально у HDF5.`;
+  renderModal();
 }
 setInterval(render,100);setInterval(()=>{dirty=true},1000);document.getElementById('window').addEventListener('change',()=>dirty=true);document.getElementById('pause').addEventListener('change',e=>{paused=e.target.checked;if(paused){closeStreams();document.getElementById('meta').textContent='Оновлення призупинено'}else connect()});document.addEventListener('visibilitychange',()=>{if(document.hidden)closeStreams();else connect()});connect();
 </script></body></html>
