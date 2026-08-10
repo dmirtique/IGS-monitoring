@@ -264,7 +264,7 @@ function render(){
 
   const age=Number.isFinite(Number(status.updated_ms))
     ?(Date.now()-Number(status.updated_ms))/1000:null;
-  const online=Boolean(status.station_online)&&age!==null&&age<5;
+  const online=age!==null&&age<300;
   document.getElementById('dot').classList.toggle('ok',online);
   document.getElementById('statusText').textContent=online?'Станція онлайн':'Станція офлайн';
   document.getElementById('meta').textContent=`Firebase live · 1 пакет кожні ${(bucketMs/1000).toLocaleString('uk-UA')} с · до ${Number(status.live_points_per_bucket||100)} реальних точок/с · показано ${win} с`;
