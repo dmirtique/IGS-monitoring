@@ -20,13 +20,13 @@
 <main class="stack" id="stack"></main>
 <section class="card" style="margin-top:14px">
   <div class="head">
-    <div class="title"><h2>Власні частоти</h2><div class="unit">FDD · HHV / HHW / HHU · діапазон 0,5–20 Гц</div></div>
-    <div class="modal-meta" id="modalMeta">Базові значення за 82 HDF5 · очікування нового FDD…</div>
+    <div class="title"><h2>Власні частоти</h2><div class="unit">Спектр амплітуд останнього HDF5 · HHV / HHW / HHU · 0,5–20 Гц</div></div>
+    <div class="modal-meta" id="modalMeta">Пошук останнього доступного HDF5…</div>
   </div>
   <div class="freq-grid" id="freqGrid"></div>
-  <div class="chart-box modal-chart"><canvas id="fddChart"></canvas></div>
+  <div class="chart-box modal-chart"><canvas id="spectrumChart"></canvas></div>
 </section>
-<div class="footer" id="footer">Крок live-даних — 0,02 с. Повний потік 4096 Гц зберігається локально у HDF5.</div>
+<div class="footer" id="footer">На сайт надходить 1 пакет/с із реальними точками; повний потік 4096 Гц зберігається локально у HDF5.</div>
 </div>
 <script>
 const DB="https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app";
@@ -85,6 +85,7 @@ for(const n of CHANNELS){
       interaction:{mode:'nearest',intersect:false,axis:'x'},
       plugins:{
         legend:{display:false},
+        decimation:{enabled:true,algorithm:'min-max',threshold:2000},
         tooltip:{
           displayColors:false,
           filter:item=>item.datasetIndex===2,
@@ -111,10 +112,10 @@ for(const n of CHANNELS){
     }
   })
 }
-const fddChart=new Chart(document.getElementById('fddChart'),{
+const spectrumChart=new Chart(document.getElementById('spectrumChart'),{
   type:'line',
   data:{datasets:[
-    {label:'FDD',data:[],borderColor:'#4db2ff',borderWidth:1.35,pointRadius:0,tension:0,spanGaps:false},
+    {label:'Амплітуда',data:[],borderColor:'#4db2ff',borderWidth:1.35,pointRadius:0,tension:0,spanGaps:false},
     {label:'Власні частоти',type:'scatter',data:[],backgroundColor:'#3ddc97',borderColor:'#3ddc97',pointRadius:4.5,pointHoverRadius:6}
   ]},
   options:{
@@ -122,14 +123,15 @@ const fddChart=new Chart(document.getElementById('fddChart'),{
     interaction:{mode:'nearest',intersect:false},
     plugins:{
       legend:{display:true,labels:{color:'#94a7c5',usePointStyle:true,boxWidth:9}},
+      decimation:{enabled:true,algorithm:'min-max',threshold:1500},
       tooltip:{displayColors:false,callbacks:{
         title:items=>items.length?`${Number(items[0].parsed.x).toLocaleString('uk-UA',{minimumFractionDigits:3,maximumFractionDigits:3})} Гц`:'',
-        label:c=>c.datasetIndex===0?`FDD: ${Number(c.parsed.y).toFixed(2)} dB`:`Власна частота: ${Number(c.parsed.x).toFixed(3)} Гц`
+        label:c=>c.datasetIndex===0?`Амплітуда: ${sci(Number(c.parsed.y))} мм/с RMS`:`Власна частота: ${Number(c.parsed.x).toFixed(3)} Гц`
       }}
     },
     scales:{
       x:{type:'linear',min:0.5,max:20,ticks:{color:'#94a7c5',maxTicksLimit:12},grid:{color:'rgba(147,169,204,.14)'},title:{display:true,text:'Частота, Гц',color:'#94a7c5'}},
-      y:{ticks:{color:'#94a7c5'},grid:{color:'rgba(147,169,204,.14)'},title:{display:true,text:'Відносний рівень FDD, dB',color:'#94a7c5'}}
+      y:{beginAtZero:true,ticks:{color:'#94a7c5',callback:v=>sci(Number(v))},grid:{color:'rgba(147,169,204,.14)'},title:{display:true,text:'Спектральна амплітуда, мм/с RMS',color:'#94a7c5'}}
     }
   }
 });
@@ -160,7 +162,7 @@ function renderModal(){
   });
   document.getElementById('freqGrid').innerHTML=rows.map(r=>`<div class="freq-item"><div class="freq-id">${r.id}${r.visible?'':' · слабко'}</div><div class="freq-value">${r.current.toLocaleString('uk-UA',{minimumFractionDigits:3,maximumFractionDigits:3})} Гц</div><div class="freq-shift">база ${r.base.toLocaleString('uk-UA',{minimumFractionDigits:3,maximumFractionDigits:3})} Гц${r.shift===null?'':` · Δ ${r.shift>=0?'+':''}${r.shift.toFixed(2)}%`}</div></div>`).join('');
 
-  const spectrum=Array.isArray(modal.spectrum_fdd_db)?modal.spectrum_fdd_db:[];
+  const spectrum=Array.isArray(modal.spectrum_amplitude_mm_s)?modal.spectrum_amplitude_mm_s:[];
   const curve=spectrum.map(p=>Array.isArray(p)&&p.length>=2?{x:Number(p[0]),y:Number(p[1])}:null).filter(p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y));
   const modePts=[];
   if(curve.length){
@@ -170,16 +172,19 @@ function renderModal(){
       if(best) modePts.push({x:r.current,y:best.y});
     }
   }
-  fddChart.data.datasets[0].data=curve;
-  fddChart.data.datasets[1].data=modePts;
-  fddChart.update('none');
+  spectrumChart.data.datasets[0].data=curve;
+  spectrumChart.data.datasets[1].data=modePts;
+  spectrumChart.update('none');
 
   const generated=Number(modal.generated_ms);
-  const files=Number(modal.processed_files);
-  const windows=Number(modal.quiet_fdd_windows);
-  document.getElementById('modalMeta').textContent=Number.isFinite(generated)
-    ?`FDD оновлено ${new Date(generated).toLocaleString('uk-UA')} · файлів ${Number.isFinite(files)?files:'—'} · фонових вікон ${Number.isFinite(windows)?windows:'—'}`
-    :'Базові значення за 82 HDF5 · новий FDD з’явиться після закриття HDF5';
+  const source=String(modal.latest_source_file||'').trim();
+  const windows=Number(modal.latest_source_windows);
+  if(curve.length){
+    document.getElementById('modalMeta').textContent=
+      `${source?`Останній файл: ${source}`:'Останній завершений HDF5'} · ${Number.isFinite(generated)?`оновлено ${new Date(generated).toLocaleString('uk-UA')}`:'оновлено'}${Number.isFinite(windows)?` · спектральних вікон ${windows}`:''}`;
+  }else{
+    document.getElementById('modalMeta').textContent='Підготовка спектра останнього доступного HDF5…';
+  }
 }
 function render(){
   if(!dirty)return;
@@ -189,11 +194,11 @@ function render(){
     .filter(validRecord)
     .sort((a,b)=>Number(a[0])-Number(b[0]));
 
-  const newest=records.length?Number(records.at(-1)[0]):Date.now();
+  const bucketMs=Math.max(1,Number(status.bucket_seconds||1.0)*1000);
+  const newest=records.length?Number(records.at(-1)[0])+bucketMs:Date.now();
   const win=Number(document.getElementById('window').value);
   const cut=newest-win*1000;
-  const visible=records.filter(r=>Number(r[0])>=cut);
-  const bucketMs=Math.max(1,Number(status.bucket_seconds||0.1)*1000);
+  const visible=records.filter(r=>Number(r[0])+bucketMs>=cut);
 
   for(let c=0;c<4;c++){
     const n=CHANNELS[c];
@@ -201,7 +206,7 @@ function render(){
     const lower=[];
     const upper=[];
     const signal=[];
-    let min=Infinity,max=-Infinity,peak=null,latest=NaN,sumSq=0,count=0;
+    let min=Infinity,max=-Infinity,peak=null,latest=NaN,sumSq=0,count=0,displayPoints=0;
 
     for(const r of visible){
       const t0=Number(r[0]);
@@ -215,7 +220,17 @@ function render(){
 
       lower.push({x:center,y:minValue});
       upper.push({x:center,y:maxValue});
-      signal.push({x:end,y:lastValue});
+
+      const offsets=Array.isArray(r[27])?r[27]:null;
+      const sampled=Array.isArray(r[28+c])?r[28+c]:null;
+      if(offsets&&sampled&&offsets.length===sampled.length&&offsets.length){
+        for(let j=0;j<offsets.length;j++){
+          const x=t0+Number(offsets[j]), y=Number(sampled[j]);
+          if(Number.isFinite(x)&&Number.isFinite(y)) signal.push({x,y});
+        }
+      }else{
+        signal.push({x:end,y:lastValue});
+      }
 
       if(minValue<min)min=minValue;
       if(maxValue>max)max=maxValue;
@@ -226,6 +241,7 @@ function render(){
       latest=lastValue;
       sumSq+=rmsValue*rmsValue*samples;
       count+=samples;
+      displayPoints+=offsets&&sampled&&offsets.length===sampled.length?offsets.length:1;
     }
 
     charts[n].data.datasets[0].data=lower;
@@ -242,7 +258,7 @@ function render(){
       statBox('RMS',detail(n,rms)),
       statBox('Мінімум',Number.isFinite(min)?detail(n,min):'—'),
       statBox('Максимум',Number.isFinite(max)?detail(n,max):'—'),
-      statBox('Пакетів / інтервал',`${visible.length} / ${win} с`)
+      statBox('Пакетів / точок',`${visible.length} / ${displayPoints}`)
     ].join('')
   }
 
@@ -251,13 +267,13 @@ function render(){
   const online=Boolean(status.station_online)&&age!==null&&age<5;
   document.getElementById('dot').classList.toggle('ok',online);
   document.getElementById('statusText').textContent=online?'Станція онлайн':'Станція офлайн';
-  document.getElementById('meta').textContent=`Firebase live · крок ${(bucketMs/1000).toLocaleString('uk-UA')} с · лінія + діапазон min–max · показано ${win} с`;
+  document.getElementById('meta').textContent=`Firebase live · 1 пакет кожні ${(bucketMs/1000).toLocaleString('uk-UA')} с · до ${Number(status.live_points_per_bucket||100)} реальних точок/с · показано ${win} с`;
   document.getElementById('stationTime').textContent=Number.isFinite(Number(status.station_time_ms))
     ?new Date(Number(status.station_time_ms)).toLocaleString('uk-UA'):'—';
   document.getElementById('sampleRate').textContent=status.sample_rate_hz
     ?`${Number(status.sample_rate_hz).toLocaleString('uk-UA')} Гц`:'—';
   document.getElementById('age').textContent=age===null?'—':`${Math.max(0,age).toFixed(1)} с тому`;
-  document.getElementById('footer').textContent=`Крок live-даних — ${(bucketMs/1000).toLocaleString('uk-UA')} с. Повний потік 4096 Гц зберігається локально у HDF5.`;
+  document.getElementById('footer').textContent=`На сайт: 1 пакет кожні ${(bucketMs/1000).toLocaleString('uk-UA')} с, до ${Number(status.live_points_per_bucket||100)} реальних точок/канал. Повний потік 4096 Гц зберігається локально у HDF5.`;
   renderModal();
 }
 setInterval(render,100);setInterval(()=>{dirty=true},1000);document.getElementById('window').addEventListener('change',()=>dirty=true);document.getElementById('pause').addEventListener('change',e=>{paused=e.target.checked;if(paused){closeStreams();document.getElementById('meta').textContent='Оновлення призупинено'}else connect()});document.addEventListener('visibilitychange',()=>{if(document.hidden)closeStreams();else connect()});connect();
