@@ -3,278 +3,297 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>IGS Monitoring</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+<title>Онлайн-моніторинг ZIR-8</title>
 <style>
-:root{color-scheme:dark;--bg:#08111f;--panel:#101b2e;--panel2:#0c1728;--text:#edf4ff;--muted:#94a7c5;--border:#263a5c;--ok:#3ddc97;--bad:#ff6b78}
-*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
-.wrap{width:min(1540px,calc(100% - 28px));margin:auto;padding:18px 0 34px}.top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px;margin-bottom:14px}h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}.meta{color:var(--muted);font-size:14px}.controls{display:flex;flex-wrap:wrap;gap:9px;align-items:center}.badge,.control{min-height:38px;display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--border);border-radius:10px;background:var(--panel);font-size:14px}.control select{border:0;background:transparent;color:var(--text);font:inherit}.dot{width:10px;height:10px;border-radius:50%;background:var(--bad)}.dot.ok{background:var(--ok)}
-.summary{display:grid;grid-template-columns:repeat(3,minmax(170px,1fr));gap:10px;margin-bottom:14px}.summary-item{padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}.label{color:var(--muted);font-size:12px;margin-bottom:4px}.value{font-size:15px;font-weight:650}.stack{display:grid;gap:14px}.card{padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--panel)}.head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin-bottom:10px}.title h2{margin:0 0 4px;font-size:18px}.unit{color:var(--muted);font-size:13px}.stats{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px;flex:1 1 900px}.stat{padding:8px 10px;border:1px solid rgba(118,149,192,.22);border-radius:9px;background:var(--panel2);min-width:0}.stat-label{color:var(--muted);font-size:11px;margin-bottom:3px}.stat-value{font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chart-box{height:340px}.freq-grid{display:grid;grid-template-columns:repeat(8,minmax(115px,1fr));gap:8px;margin:2px 0 12px}.freq-item{padding:10px 11px;border:1px solid rgba(118,149,192,.22);border-radius:10px;background:var(--panel2);min-width:0}.freq-id{color:var(--muted);font-size:11px;margin-bottom:3px}.freq-value{font-size:16px;font-weight:700}.freq-shift{color:var(--muted);font-size:11px;margin-top:4px}.modal-meta{color:var(--muted);font-size:12px;align-self:flex-end}.modal-chart{height:360px}.footer{margin-top:13px;color:var(--muted);font-size:12px;text-align:center}
-@media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(3,1fr)}.freq-grid{grid-template-columns:repeat(4,1fr)}}@media(max-width:650px){.summary{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.freq-grid{grid-template-columns:repeat(2,1fr)}.chart-box{height:270px}.modal-chart{height:300px}}
+:root{
+  color-scheme:dark;
+  --bg:#07111f;
+  --panel:#0a1729;
+  --panel2:#0d1c31;
+  --border:#28415f;
+  --text:#f5f8fc;
+  --muted:#9eb2ca;
+  --blue:#35a9ff;
+  --blueFill:rgba(53,169,255,.14);
+  --green:#25d07f;
+  --red:#ff5a6b;
+  --grid:#203651;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif}
+body{padding:10px}
+.page{max-width:1800px;margin:0 auto}
+.header{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;margin-bottom:8px}
+.title h1{font-size:24px;line-height:1.1;margin:0 0 3px;font-weight:800}
+.title p{margin:0;color:var(--muted);font-size:11px}
+.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+button,select{
+  border:1px solid var(--border);background:#0c1a2d;color:var(--text);
+  border-radius:7px;padding:7px 10px;font-size:12px
+}
+button{cursor:pointer}
+button:hover{border-color:#4d739d}
+button.green{background:#0d4b35;border-color:#1f8c64}
+button.paused{background:#5c2530;border-color:#9b4052}
+.overview{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px}
+.info-card{border:1px solid var(--border);background:var(--panel);border-radius:9px;padding:8px 12px;min-height:58px}
+.info-label{color:var(--muted);font-size:10px;margin-bottom:4px}
+.info-value{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);margin-right:6px}
+.live-dot.on{background:var(--green);box-shadow:0 0 0 3px rgba(37,208,127,.12)}
+.channels{display:flex;flex-direction:column;gap:9px}
+.channel{border:1px solid var(--border);background:var(--panel);border-radius:9px;padding:8px 9px 7px}
+.channel-top{display:grid;grid-template-columns:120px repeat(6,minmax(125px,1fr));gap:7px;align-items:stretch;margin-bottom:4px}
+.channel-name{padding:5px 3px}
+.channel-name .name{font-size:15px;font-weight:800}
+.channel-name .unit{font-size:10px;color:var(--muted);margin-top:3px}
+.metric{border:1px solid var(--border);background:#091629;border-radius:6px;padding:5px 8px;min-height:42px}
+.metric .label{font-size:9px;color:var(--muted);margin-bottom:2px}
+.metric .value{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chart-wrap{width:100%;height:205px;position:relative}
+canvas{width:100%;height:100%;display:block}
+.status-line{font-size:10px;color:var(--muted);margin:8px 2px 0}
+@media(max-width:1100px){
+  .overview{grid-template-columns:1fr}
+  .channel-top{grid-template-columns:repeat(3,1fr)}
+  .channel-name{grid-column:1/-1}
+}
+@media(max-width:650px){
+  body{padding:6px}
+  .channel-top{grid-template-columns:1fr 1fr}
+  .chart-wrap{height:180px}
+  .title h1{font-size:20px}
+}
 </style>
 </head>
-<body><div class="wrap">
-<div class="top"><div><h1>Онлайн-моніторинг ZIR-8</h1><div class="meta" id="meta">Підключення до Firebase…</div></div>
-<div class="controls"><label class="control">Інтервал: <select id="window"><option value="10">10 секунд</option><option value="60" selected>1 хвилина</option><option value="300">5 хвилин</option></select></label><label class="control"><input type="checkbox" id="pause"> Пауза</label><div class="badge"><span class="dot" id="dot"></span><span id="statusText">Станція офлайн</span></div></div></div>
-<section class="summary"><div class="summary-item"><div class="label">Час станції</div><div class="value" id="stationTime">—</div></div><div class="summary-item"><div class="label">Частота дискретизації</div><div class="value" id="sampleRate">—</div></div><div class="summary-item"><div class="label">Останнє оновлення</div><div class="value" id="age">—</div></div></section>
-<main class="stack" id="stack"></main>
-<section class="card" style="margin-top:14px">
-  <div class="head">
-    <div class="title"><h2>Власні частоти</h2><div class="unit">Спектр амплітуд останнього HDF5 · HHV / HHW / HHU · 0,5–20 Гц</div></div>
-    <div class="modal-meta" id="modalMeta">Пошук останнього доступного HDF5…</div>
-  </div>
-  <div class="freq-grid" id="freqGrid"></div>
-  <div class="chart-box modal-chart"><canvas id="spectrumChart"></canvas></div>
-</section>
-<div class="footer" id="footer">На сайт надходить 1 пакет/с із реальними точками; повний потік 4096 Гц зберігається локально у HDF5.</div>
+<body>
+<div class="page">
+  <header class="header">
+    <div class="title">
+      <h1>Онлайн-моніторинг ZIR-8</h1>
+      <p>Канали HHV · HHW · HHU · ACC · час станції +3 години</p>
+    </div>
+    <div class="controls">
+      <label style="font-size:11px;color:var(--muted)">Інтервал:
+        <select id="seconds">
+          <option value="10">10 секунд</option>
+          <option value="30" selected>30 секунд</option>
+          <option value="60">1 хвилина</option>
+          <option value="120">2 хвилини</option>
+        </select>
+      </label>
+      <button id="pauseBtn">⏸ Пауза</button>
+      <button id="csvBtn" class="green">● Скачати дані</button>
+    </div>
+  </header>
+
+  <section class="overview">
+    <div class="info-card">
+      <div class="info-label">Статус / час станції</div>
+      <div class="info-value"><span id="liveDot" class="live-dot"></span><span id="stationTime">Очікування…</span></div>
+    </div>
+    <div class="info-card">
+      <div class="info-label">Частота дискретизації</div>
+      <div id="frequency" class="info-value">—</div>
+    </div>
+    <div class="info-card">
+      <div class="info-label">Дані</div>
+      <div id="shape" class="info-value">—</div>
+    </div>
+  </section>
+
+  <main class="channels" id="channels"></main>
+  <div class="status-line" id="footStatus">Очікування потоку…</div>
 </div>
+
 <script>
-const DB="https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app";
-const CHANNELS=["HHV","HHW","HHU","ACC"], UNITS=["м/с","м/с","м/с","м/с²"], G=9.80665;
-const pointsBySlot=new Map();
-const BASELINE_FREQS=[1.000000,1.906250,2.406250,2.937500,3.359375,3.710938,4.109375,5.007812];
-let status={}, modal={}, pointSource=null,statusSource=null,modalSource=null,dirty=true,paused=false;
-const stack=document.getElementById('stack');
-for(let i=0;i<4;i++){const n=CHANNELS[i];stack.insertAdjacentHTML('beforeend',`<section class="card"><div class="head"><div class="title"><h2>${n}</h2><div class="unit">${i===3?'Прискорення':'Швидкість'}, ${UNITS[i]}</div></div><div class="stats" id="stats-${n}"></div></div><div class="chart-box"><canvas id="${n}"></canvas></div></section>`)}
-function sci(v){if(!Number.isFinite(v))return'—';if(v===0)return'0';return Math.abs(v)>=1e-3&&Math.abs(v)<1e3?v.toLocaleString('uk-UA',{maximumSignificantDigits:4}):v.toExponential(3)}
-function detail(ch,v){return ch==='ACC'?`${sci(v)} м/с² · ${sci(v/G)} g`:`${sci(v)} м/с · ${sci(v*1000)} мм/с`}
-function timeText(ms,full=false){if(!Number.isFinite(ms))return'—';return new Date(ms).toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit',second:'2-digit',fractionalSecondDigits:full?3:undefined})}
-const charts={};
-for(const n of CHANNELS){
-  charts[n]=new Chart(document.getElementById(n),{
-    type:'line',
-    data:{datasets:[
-      {
-        label:'Мінімум',
-        data:[],
-        borderColor:'rgba(77,178,255,0)',
-        backgroundColor:'rgba(77,178,255,0.14)',
-        borderWidth:0,
-        pointRadius:0,
-        tension:0,
-        fill:false
-      },
-      {
-        label:'Діапазон min–max',
-        data:[],
-        borderColor:'rgba(77,178,255,0)',
-        backgroundColor:'rgba(77,178,255,0.14)',
-        borderWidth:0,
-        pointRadius:0,
-        tension:0,
-        fill:'-1'
-      },
-      {
-        label:'Сигнал',
-        data:[],
-        borderColor:'#4db2ff',
-        backgroundColor:'rgba(77,178,255,0)',
-        borderWidth:1.15,
-        pointRadius:0,
-        pointHitRadius:7,
-        tension:0,
-        spanGaps:false
-      }
-    ]},
-    options:{
-      responsive:true,
-      maintainAspectRatio:false,
-      animation:false,
-      parsing:false,
-      normalized:true,
-      interaction:{mode:'nearest',intersect:false,axis:'x'},
-      plugins:{
-        legend:{display:false},
-        decimation:{enabled:true,algorithm:'min-max',threshold:2000},
-        tooltip:{
-          displayColors:false,
-          filter:item=>item.datasetIndex===2,
-          callbacks:{
-            title:x=>x.length?timeText(x[0].parsed.x,true):'',
-            label:c=>detail(n,c.parsed.y)
-          }
-        }
-      },
-      scales:{
-        x:{
-          type:'linear',
-          ticks:{maxTicksLimit:9,color:'#94a7c5',callback:v=>timeText(Number(v))},
-          grid:{color:'rgba(147,169,204,.14)'},
-          title:{display:true,text:'Час',color:'#94a7c5'}
-        },
-        y:{
-          grace:'8%',
-          ticks:{color:'#94a7c5',callback:v=>sci(Number(v))},
-          grid:{color:'rgba(147,169,204,.14)'},
-          title:{display:true,text:n==='ACC'?'м/с²':'м/с',color:'#94a7c5'}
-        }
-      }
-    }
-  })
+const CHANNELS = [
+  {id:"HHV", source:"HHV", title:"HHV", unit:"м/с"},
+  {id:"HHW", source:"HHW", title:"HHW", unit:"м/с"},
+  {id:"HHU", source:"HHU", title:"HHU", unit:"м/с"},
+  {id:"ACC", source:"ACC_MS2", title:"ACC", unit:"м/с²"}
+];
+
+const channelsRoot = document.getElementById("channels");
+let paused = false;
+let latestPayload = null;
+
+function fmt(v){
+  if(!Number.isFinite(v)) return "—";
+  const a=Math.abs(v);
+  if(a!==0 && (a<0.001 || a>=10000)) return v.toExponential(3);
+  return v.toFixed(6).replace(/0+$/,"").replace(/\.$/,"");
 }
-const spectrumChart=new Chart(document.getElementById('spectrumChart'),{
-  type:'line',
-  data:{datasets:[
-    {label:'Амплітуда',data:[],borderColor:'#4db2ff',borderWidth:1.35,pointRadius:0,tension:0,spanGaps:false},
-    {label:'Власні частоти',type:'scatter',data:[],backgroundColor:'#3ddc97',borderColor:'#3ddc97',pointRadius:4.5,pointHoverRadius:6}
-  ]},
-  options:{
-    responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,
-    interaction:{mode:'nearest',intersect:false},
-    plugins:{
-      legend:{display:true,labels:{color:'#94a7c5',usePointStyle:true,boxWidth:9}},
-      decimation:{enabled:true,algorithm:'min-max',threshold:1500},
-      tooltip:{displayColors:false,callbacks:{
-        title:items=>items.length?`${Number(items[0].parsed.x).toLocaleString('uk-UA',{minimumFractionDigits:3,maximumFractionDigits:3})} Гц`:'',
-        label:c=>c.datasetIndex===0?`Амплітуда: ${sci(Number(c.parsed.y))} мм/с RMS`:`Власна частота: ${Number(c.parsed.x).toFixed(3)} Гц`
-      }}
-    },
-    scales:{
-      x:{type:'linear',min:0.5,max:20,ticks:{color:'#94a7c5',maxTicksLimit:12},grid:{color:'rgba(147,169,204,.14)'},title:{display:true,text:'Частота, Гц',color:'#94a7c5'}},
-      y:{beginAtZero:true,ticks:{color:'#94a7c5',callback:v=>sci(Number(v))},grid:{color:'rgba(147,169,204,.14)'},title:{display:true,text:'Спектральна амплітуда, мм/с RMS',color:'#94a7c5'}}
-    }
-  }
-});
-function validRecord(r){return Array.isArray(r)&&r.length>=27&&Number.isFinite(Number(r[0]))}
-function applyPointEvent(ev){const p=JSON.parse(ev.data),path=p.path,data=p.data;if(path==='/'){pointsBySlot.clear();if(data)for(const [k,v]of Object.entries(data))if(validRecord(v))pointsBySlot.set(k,v)}else{const k=path.replace(/^\//,'');if(data===null)pointsBySlot.delete(k);else if(validRecord(data))pointsBySlot.set(k,data)}dirty=true}
-function applyPointPatch(ev){const p=JSON.parse(ev.data);if(p.path==='/'){for(const[k,v]of Object.entries(p.data||{})){if(v===null)pointsBySlot.delete(k);else if(validRecord(v))pointsBySlot.set(k,v)}}else applyPointEvent(ev);dirty=true}
-function applyStatus(ev){const p=JSON.parse(ev.data);if(p.path==='/')status=p.data||{};else status[p.path.replace(/^\//,'')]=p.data;dirty=true}
-function applyModal(ev){
-  const p=JSON.parse(ev.data);
-  if(p.path==='/') modal=p.data||{};
-  else {
-    const key=p.path.replace(/^\//,'');
-    if(p.data===null) delete modal[key]; else modal[key]=p.data;
-  }
-  dirty=true;
+function safePoints(arr){
+  return Array.isArray(arr) ? arr.filter(p=>Array.isArray(p)&&p.length>=2&&Number.isFinite(+p[0])&&Number.isFinite(+p[1])).map(p=>[+p[0],+p[1]]) : [];
 }
-function connect(){if(paused||document.hidden)return;closeStreams();pointSource=new EventSource(DB+'/public/points.json');pointSource.addEventListener('put',applyPointEvent);pointSource.addEventListener('patch',applyPointPatch);pointSource.onerror=()=>{document.getElementById('meta').textContent='Повторне підключення до Firebase…'};statusSource=new EventSource(DB+'/public/status.json');statusSource.addEventListener('put',applyStatus);statusSource.addEventListener('patch',applyStatus);modalSource=new EventSource(DB+'/public/modal.json');modalSource.addEventListener('put',applyModal);modalSource.addEventListener('patch',applyModal)}
-function closeStreams(){if(pointSource){pointSource.close();pointSource=null}if(statusSource){statusSource.close();statusSource=null}if(modalSource){modalSource.close();modalSource=null}}
-function statBox(l,v,t=''){return`<div class="stat" title="${t||v}"><div class="stat-label">${l}</div><div class="stat-value">${v}</div></div>`}
-function renderModal(){
-  const tracked=Array.isArray(modal.tracked_modes)?modal.tracked_modes:[];
-  const rows=BASELINE_FREQS.map((base,i)=>{
-    const m=tracked.find(x=>String(x.id||'')===`NF${String(i+1).padStart(2,'0')}`)||tracked[i]||null;
-    const current=m&&Number.isFinite(Number(m.current_hz))?Number(m.current_hz):base;
-    const shift=m&&Number.isFinite(Number(m.shift_pct))?Number(m.shift_pct):null;
-    const visible=m?m.visible!==false:true;
-    return {id:`NF${String(i+1).padStart(2,'0')}`,base,current,shift,visible};
+function stats(points){
+  const y=points.map(p=>p[1]).filter(Number.isFinite);
+  if(!y.length) return {cur:NaN,max:NaN,min:NaN,rms:NaN,avg:NaN,median:NaN,count:0};
+  const sorted=[...y].sort((a,b)=>a-b);
+  const n=y.length;
+  const median=n%2?sorted[(n-1)/2]:(sorted[n/2-1]+sorted[n/2])/2;
+  const avg=y.reduce((a,b)=>a+b,0)/n;
+  return {
+    cur:y[y.length-1], max:Math.max(...y), min:Math.min(...y),
+    rms:Math.sqrt(y.reduce((s,v)=>s+v*v,0)/n),
+    avg, median, count:n
+  };
+}
+function metric(label,id){
+  return `<div class="metric"><div class="label">${label}</div><div id="${id}" class="value">—</div></div>`;
+}
+for(const c of CHANNELS){
+  const section=document.createElement("section");
+  section.className="channel";
+  section.innerHTML=`
+    <div class="channel-top">
+      <div class="channel-name"><div class="name">${c.title}</div><div class="unit">${c.unit}</div></div>
+      ${metric("Поточне","m_cur_"+c.id)}
+      ${metric("Макс. |амплітуда|","m_max_"+c.id)}
+      ${metric("RMS","m_rms_"+c.id)}
+      ${metric("Середнє","m_avg_"+c.id)}
+      ${metric("Медіана","m_med_"+c.id)}
+      ${metric("Точок / кадр","m_n_"+c.id)}
+    </div>
+    <div class="chart-wrap"><canvas id="chart_${c.id}"></canvas></div>`;
+  channelsRoot.appendChild(section);
+}
+
+function setMetric(id,val,unit=""){
+  document.getElementById(id).textContent = Number.isFinite(val) ? `${fmt(val)}${unit ? " "+unit : ""}` : "—";
+}
+function draw(canvas, points, unit){
+  const rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+  canvas.width=Math.max(1,Math.round(rect.width*dpr));
+  canvas.height=Math.max(1,Math.round(rect.height*dpr));
+  const ctx=canvas.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const w=rect.width,h=rect.height;
+  ctx.clearRect(0,0,w,h);
+  const P={l:78,r:12,t:8,b:27},pw=w-P.l-P.r,ph=h-P.t-P.b;
+
+  ctx.font="9px Segoe UI,Arial";
+  ctx.strokeStyle="#203651";
+  ctx.fillStyle="#9eb2ca";
+  ctx.lineWidth=1;
+
+  if(points.length<2){
+    ctx.fillText("Немає даних",P.l+10,P.t+20);
+    return;
+  }
+  let xmin=points[0][0],xmax=points[points.length-1][0];
+  let ymin=Infinity,ymax=-Infinity;
+  for(const [,y] of points){ymin=Math.min(ymin,y);ymax=Math.max(ymax,y)}
+  const maxAbs=Math.max(Math.abs(ymin),Math.abs(ymax),1e-15);
+  ymin=-maxAbs*1.08; ymax=maxAbs*1.08;
+
+  const X=x=>P.l+(x-xmin)/(xmax-xmin||1)*pw;
+  const Y=y=>P.t+(ymax-y)/(ymax-ymin)*ph;
+
+  ctx.textAlign="right";ctx.textBaseline="middle";
+  for(let i=0;i<=6;i++){
+    const v=ymax-(ymax-ymin)*i/6, y=Y(v);
+    ctx.beginPath();ctx.moveTo(P.l,y);ctx.lineTo(w-P.r,y);ctx.stroke();
+    ctx.fillText(fmt(v),P.l-7,y);
+  }
+  ctx.textAlign="center";ctx.textBaseline="top";
+  for(let i=0;i<=6;i++){
+    const t=xmin+(xmax-xmin)*i/6,x=X(t);
+    ctx.beginPath();ctx.moveTo(x,P.t);ctx.lineTo(x,P.t+ph);ctx.stroke();
+    ctx.fillText(new Date(t).toLocaleTimeString("uk-UA",{hour12:false,hour:"2-digit",minute:"2-digit",second:"2-digit"}),x,P.t+ph+7);
+  }
+
+  const zero=Y(0);
+  ctx.strokeStyle="#6f86a0";ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(P.l,zero);ctx.lineTo(w-P.r,zero);ctx.stroke();ctx.setLineDash([]);
+
+  const grad=ctx.createLinearGradient(0,P.t,0,P.t+ph);
+  grad.addColorStop(0,"rgba(53,169,255,.28)");
+  grad.addColorStop(1,"rgba(53,169,255,.03)");
+  ctx.beginPath();
+  points.forEach((p,i)=>{
+    const x=X(p[0]),y=Y(p[1]);
+    if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y);
   });
-  document.getElementById('freqGrid').innerHTML=rows.map(r=>`<div class="freq-item"><div class="freq-id">${r.id}${r.visible?'':' · слабко'}</div><div class="freq-value">${r.current.toLocaleString('uk-UA',{minimumFractionDigits:3,maximumFractionDigits:3})} Гц</div><div class="freq-shift">база ${r.base.toLocaleString('uk-UA',{minimumFractionDigits:3,maximumFractionDigits:3})} Гц${r.shift===null?'':` · Δ ${r.shift>=0?'+':''}${r.shift.toFixed(2)}%`}</div></div>`).join('');
+  ctx.lineTo(X(points[points.length-1][0]),zero);
+  ctx.lineTo(X(points[0][0]),zero);
+  ctx.closePath();ctx.fillStyle=grad;ctx.fill();
 
-  const spectrum=Array.isArray(modal.spectrum_amplitude_mm_s)?modal.spectrum_amplitude_mm_s:[];
-  const curve=spectrum.map(p=>Array.isArray(p)&&p.length>=2?{x:Number(p[0]),y:Number(p[1])}:null).filter(p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y));
-  const modePts=[];
-  if(curve.length){
-    for(const r of rows){
-      let best=null;
-      for(const p of curve){if(best===null||Math.abs(p.x-r.current)<Math.abs(best.x-r.current))best=p}
-      if(best) modePts.push({x:r.current,y:best.y});
+  ctx.beginPath();
+  points.forEach((p,i)=>{
+    const x=X(p[0]),y=Y(p[1]);
+    if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle="#35a9ff";ctx.lineWidth=.9;ctx.stroke();
+
+  ctx.save();
+  ctx.translate(10,P.t+ph/2);ctx.rotate(-Math.PI/2);
+  ctx.fillStyle="#9eb2ca";ctx.font="9px Segoe UI,Arial";ctx.textAlign="center";
+  ctx.fillText(unit,0,0);ctx.restore();
+
+  ctx.fillStyle="#9eb2ca";ctx.textAlign="center";ctx.fillText("Час",P.l+pw/2,h-10);
+}
+
+async function update(){
+  if(paused) return;
+  const seconds=document.getElementById("seconds").value;
+  try{
+    const r=await fetch(`/api/data?seconds=${encodeURIComponent(seconds)}`,{cache:"no-store"});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d=await r.json();
+    latestPayload=d;
+
+    const s=d.status||{};
+    document.getElementById("stationTime").textContent=s.station_time_plus_3h||s.message||"Онлайн";
+    document.getElementById("frequency").textContent=Number.isFinite(+s.real_frequency_hz)?`${fmt(+s.real_frequency_hz)} Гц`:(Number.isFinite(+s.frequency_hz)?`${fmt(+s.frequency_hz)} Гц`:"—");
+    document.getElementById("shape").textContent=`${s.channel_count??"—"} канали · ${s.samples_per_frame??"—"} точок/кадр`;
+    document.getElementById("liveDot").classList.toggle("on",!!s.connected);
+    document.getElementById("footStatus").textContent=s.connected?`Потік активний · кадрів отримано: ${s.frames_received??"—"}`:`${s.message||"Немає з'єднання"}`;
+
+    for(const c of CHANNELS){
+      const points=safePoints(d.series?.[c.source]);
+      const st=stats(points);
+      setMetric("m_cur_"+c.id,st.cur,c.unit);
+      setMetric("m_max_"+c.id,Math.max(Math.abs(st.max||0),Math.abs(st.min||0)),c.unit);
+      setMetric("m_rms_"+c.id,st.rms,c.unit);
+      setMetric("m_avg_"+c.id,st.avg,c.unit);
+      setMetric("m_med_"+c.id,st.median,c.unit);
+      document.getElementById("m_n_"+c.id).textContent=`${st.count} / ${s.samples_per_frame??"—"}`;
+      draw(document.getElementById("chart_"+c.id),points,c.unit);
     }
-  }
-  spectrumChart.data.datasets[0].data=curve;
-  spectrumChart.data.datasets[1].data=modePts;
-  spectrumChart.update('none');
-
-  const generated=Number(modal.generated_ms);
-  const source=String(modal.latest_source_file||'').trim();
-  const windows=Number(modal.latest_source_windows);
-  if(curve.length){
-    document.getElementById('modalMeta').textContent=
-      `${source?`Останній файл: ${source}`:'Останній завершений HDF5'} · ${Number.isFinite(generated)?`оновлено ${new Date(generated).toLocaleString('uk-UA')}`:'оновлено'}${Number.isFinite(windows)?` · спектральних вікон ${windows}`:''}`;
-  }else{
-    document.getElementById('modalMeta').textContent='Підготовка спектра останнього доступного HDF5…';
+  }catch(e){
+    document.getElementById("liveDot").classList.remove("on");
+    document.getElementById("footStatus").textContent="Помилка отримання даних: "+e.message;
   }
 }
-function render(){
-  if(!dirty)return;
-  dirty=false;
 
-  const records=[...pointsBySlot.values()]
-    .filter(validRecord)
-    .sort((a,b)=>Number(a[0])-Number(b[0]));
-
-  const bucketMs=Math.max(1,Number(status.bucket_seconds||1.0)*1000);
-  const newest=records.length?Number(records.at(-1)[0])+bucketMs:Date.now();
-  const win=Number(document.getElementById('window').value);
-  const cut=newest-win*1000;
-  const visible=records.filter(r=>Number(r[0])+bucketMs>=cut);
-
-  for(let c=0;c<4;c++){
-    const n=CHANNELS[c];
-    const base=2+c*6;
-    const lower=[];
-    const upper=[];
-    const signal=[];
-    let min=Infinity,max=-Infinity,peak=null,latest=NaN,sumSq=0,count=0,displayPoints=0;
-
-    for(const r of visible){
-      const t0=Number(r[0]);
-      const center=t0+bucketMs/2;
-      const end=t0+bucketMs;
-      const minValue=Number(r[base+1]);
-      const maxValue=Number(r[base+3]);
-      const lastValue=Number(r[base+4]);
-      const rmsValue=Number(r[base+5]);
-      const samples=Number(r[1]);
-
-      lower.push({x:center,y:minValue});
-      upper.push({x:center,y:maxValue});
-
-      const offsets=Array.isArray(r[27])?r[27]:null;
-      const sampled=Array.isArray(r[28+c])?r[28+c]:null;
-      if(offsets&&sampled&&offsets.length===sampled.length&&offsets.length){
-        for(let j=0;j<offsets.length;j++){
-          const x=t0+Number(offsets[j]), y=Number(sampled[j]);
-          if(Number.isFinite(x)&&Number.isFinite(y)) signal.push({x,y});
-        }
-      }else{
-        signal.push({x:end,y:lastValue});
-      }
-
-      if(minValue<min)min=minValue;
-      if(maxValue>max)max=maxValue;
-      const minPoint={x:t0+Number(r[base]),y:minValue};
-      const maxPoint={x:t0+Number(r[base+2]),y:maxValue};
-      if(!peak||Math.abs(minPoint.y)>Math.abs(peak.y))peak=minPoint;
-      if(!peak||Math.abs(maxPoint.y)>Math.abs(peak.y))peak=maxPoint;
-      latest=lastValue;
-      sumSq+=rmsValue*rmsValue*samples;
-      count+=samples;
-      displayPoints+=offsets&&sampled&&offsets.length===sampled.length?offsets.length:1;
+document.getElementById("pauseBtn").addEventListener("click",()=>{
+  paused=!paused;
+  const b=document.getElementById("pauseBtn");
+  b.textContent=paused?"▶ Продовжити":"⏸ Пауза";
+  b.classList.toggle("paused",paused);
+  if(!paused)update();
+});
+document.getElementById("seconds").addEventListener("change",update);
+document.getElementById("csvBtn").addEventListener("click",()=>{
+  if(!latestPayload) return;
+  const rows=[["channel","time","value","unit"]];
+  for(const c of CHANNELS){
+    for(const [t,v] of safePoints(latestPayload.series?.[c.source])){
+      rows.push([c.id,new Date(t).toISOString(),v,c.unit]);
     }
-
-    charts[n].data.datasets[0].data=lower;
-    charts[n].data.datasets[1].data=upper;
-    charts[n].data.datasets[2].data=signal;
-    charts[n].options.scales.x.min=cut;
-    charts[n].options.scales.x.max=newest+bucketMs;
-    charts[n].update('none');
-
-    const rms=count?Math.sqrt(sumSq/count):NaN;
-    document.getElementById('stats-'+n).innerHTML=[
-      statBox('Поточне',detail(n,latest)),
-      statBox('Макс. |значення|',peak?detail(n,Math.abs(peak.y)):'—',peak?timeText(peak.x,true):''),
-      statBox('RMS',detail(n,rms)),
-      statBox('Мінімум',Number.isFinite(min)?detail(n,min):'—'),
-      statBox('Максимум',Number.isFinite(max)?detail(n,max):'—'),
-      statBox('Пакетів / точок',`${visible.length} / ${displayPoints}`)
-    ].join('')
   }
-
-  const age=Number.isFinite(Number(status.updated_ms))
-    ?(Date.now()-Number(status.updated_ms))/1000:null;
-  const online=age!==null&&age<300;
-  document.getElementById('dot').classList.toggle('ok',online);
-  document.getElementById('statusText').textContent=online?'Станція онлайн':'Станція офлайн';
-  document.getElementById('meta').textContent=`Firebase live · 1 пакет кожні ${(bucketMs/1000).toLocaleString('uk-UA')} с · до ${Number(status.live_points_per_bucket||100)} реальних точок/с · показано ${win} с`;
-  document.getElementById('stationTime').textContent=Number.isFinite(Number(status.station_time_ms))
-    ?new Date(Number(status.station_time_ms)).toLocaleString('uk-UA'):'—';
-  document.getElementById('sampleRate').textContent=status.sample_rate_hz
-    ?`${Number(status.sample_rate_hz).toLocaleString('uk-UA')} Гц`:'—';
-  document.getElementById('age').textContent=age===null?'—':`${Math.max(0,age).toFixed(1)} с тому`;
-  document.getElementById('footer').textContent=`На сайт: 1 пакет кожні ${(bucketMs/1000).toLocaleString('uk-UA')} с, до ${Number(status.live_points_per_bucket||100)} реальних точок/канал. Повний потік 4096 Гц зберігається локально у HDF5.`;
-  renderModal();
-}
-setInterval(render,100);setInterval(()=>{dirty=true},1000);document.getElementById('window').addEventListener('change',()=>dirty=true);document.getElementById('pause').addEventListener('change',e=>{paused=e.target.checked;if(paused){closeStreams();document.getElementById('meta').textContent='Оновлення призупинено'}else connect()});document.addEventListener('visibilitychange',()=>{if(document.hidden)closeStreams();else connect()});connect();
-</script></body></html>
+  const csv=rows.map(r=>r.map(x=>`"${String(x).replaceAll('"','""')}"`).join(",")).join("\n");
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=`ZIR8_${new Date().toISOString().replaceAll(":","-")}.csv`;
+  a.click();URL.revokeObjectURL(a.href);
+});
+window.addEventListener("resize",()=>latestPayload&&update());
+setInterval(update,500);
+update();
+</script>
+</body>
+</html>
