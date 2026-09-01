@@ -19,16 +19,16 @@
 <div class="controls"><label class="control">Інтервал: <select id="window"><option value="10">10 секунд</option><option value="60" selected>1 хвилина</option><option value="300">5 хвилин</option></select></label><label class="control"><input type="checkbox" id="pause"> Пауза</label><div class="badge"><span class="dot" id="dot"></span><span id="statusText">Станція офлайн</span></div></div></div>
 <section class="summary"><div class="summary-item"><div class="label">Час станції</div><div class="value" id="stationTime">—</div></div><div class="summary-item"><div class="label">Частота дискретизації</div><div class="value" id="sampleRate">—</div></div><div class="summary-item"><div class="label">Останнє оновлення</div><div class="value" id="age">—</div></div></section>
 <main class="stack" id="stack"></main>
-<div class="footer" id="footer">На сайт надходить 1 пакет/с із реальними точками; повний потік 4096 Гц зберігається локально у HDF5.</div>
+<div class="footer" id="footer">На сайт надходить 1 пакет/с із реальними точками; повний потік зберігається локально у HDF5.</div>
 </div>
 <script>
 const DB="https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app";
 const DATA_ROOT="/public/st107";
-const CHANNELS=["HHV","HHW","HHU","ACC"], RAW_CHANNELS=["ALZ","ALE","ALN","BLE"], UNITS=["м/с","м/с","м/с","м/с²"], G=9.80665;
+const CHANNELS=["HHE","HHN","HHZ","ACC"], UNITS=["м/с","м/с","м/с","м/с²"], G=9.80665;
 const pointsBySlot=new Map();
 let status={}, pointSource=null,statusSource=null,dirty=true,paused=false;
 const stack=document.getElementById('stack');
-for(let i=0;i<4;i++){const n=CHANNELS[i];stack.insertAdjacentHTML('beforeend',`<section class="card"><div class="head"><div class="title"><h2>${n}<span class="source-channel">${RAW_CHANNELS[i]}</span></h2><div class="unit">${i===3?'Прискорення':'Швидкість'}, ${UNITS[i]}</div></div><div class="stats" id="stats-${n}"></div></div><div class="chart-box"><canvas id="${n}"></canvas></div></section>`)}
+for(let i=0;i<4;i++){const n=CHANNELS[i];stack.insertAdjacentHTML('beforeend',`<section class="card"><div class="head"><div class="title"><h2>${n}</h2><div class="unit">${i===3?'Прискорення':'Швидкість'}, ${UNITS[i]}</div></div><div class="stats" id="stats-${n}"></div></div><div class="chart-box"><canvas id="${n}"></canvas></div></section>`)}
 function sci(v){if(!Number.isFinite(v))return'—';if(v===0)return'0';return Math.abs(v)>=1e-3&&Math.abs(v)<1e3?v.toLocaleString('uk-UA',{maximumSignificantDigits:4}):v.toExponential(3)}
 function detail(ch,v){return ch==='ACC'?`${sci(v)} м/с² · ${sci(v/G)} g`:`${sci(v)} м/с · ${sci(v*1000)} мм/с`}
 function timeText(ms,full=false){if(!Number.isFinite(ms))return'—';return new Date(ms).toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit',second:'2-digit',fractionalSecondDigits:full?3:undefined})}
@@ -199,7 +199,7 @@ function render(){
   document.getElementById('sampleRate').textContent=status.sample_rate_hz
     ?`${Number(status.sample_rate_hz).toLocaleString('uk-UA')} Гц`:'—';
   document.getElementById('age').textContent=age===null?'—':`${Math.max(0,age).toFixed(1)} с тому`;
-  document.getElementById('footer').textContent=`На сайт ST107: 1 пакет кожні ${(bucketMs/1000).toLocaleString('uk-UA')} с, до ${Number(status.live_points_per_bucket||100)} реальних точок/канал. Повний потік 4096 Гц зберігається локально у HDF5; фізичні одиниці — за калібруванням АС-4 №2.`;
+  document.getElementById('footer').textContent=`На сайт ST107: 1 пакет кожні ${(bucketMs/1000).toLocaleString('uk-UA')} с, до ${Number(status.live_points_per_bucket||100)} реальних точок/канал. Повний потік зберігається локально у HDF5; фізичні одиниці — за калібруванням АС-4 №2.`;
 }
 setInterval(render,100);setInterval(()=>{dirty=true},1000);document.getElementById('window').addEventListener('change',()=>dirty=true);document.getElementById('pause').addEventListener('change',e=>{paused=e.target.checked;if(paused){closeStreams();document.getElementById('meta').textContent='Оновлення призупинено'}else connect()});document.addEventListener('visibilitychange',()=>{if(document.hidden)closeStreams();else connect()});connect();
 </script></body></html>
