@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IGS Monitoring — Magnetometer</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+<style>
+:root{color-scheme:dark;--bg:#08111f;--panel:#101b2e;--panel2:#0c1728;--text:#edf4ff;--muted:#94a7c5;--border:#263a5c;--ok:#3ddc97;--bad:#ff6b78}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+.wrap{width:min(1540px,calc(100% - 28px));margin:auto;padding:18px 0 34px}
+.top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px;margin-bottom:14px}
+h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}.meta{color:var(--muted);font-size:14px}
+.controls{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.badge,.control{min-height:38px;display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--border);border-radius:10px;background:var(--panel);font-size:14px}
+.control select{border:0;background:transparent;color:var(--text);font:inherit}.dot{width:10px;height:10px;border-radius:50%;background:var(--bad)}.dot.ok{background:var(--ok)}
+.summary{display:grid;grid-template-columns:repeat(3,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.summary-item{padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}
+.label{color:var(--muted);font-size:12px;margin-bottom:4px}.value{font-size:15px;font-weight:650}
+.stack{display:grid;gap:14px}.card{padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--panel)}
+.head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin-bottom:10px}.title h2{margin:0 0 4px;font-size:18px}.unit{color:var(--muted);font-size:13px}
+.stats{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px;flex:1 1 900px}
+.stat{padding:8px 10px;border:1px solid rgba(118,149,192,.22);border-radius:9px;background:var(--panel2);min-width:0}
+.stat-label{color:var(--muted);font-size:11px;margin-bottom:3px}.stat-value{font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chart-box{height:340px}.footer{margin-top:13px;color:var(--muted);font-size:12px;text-align:center}
+@media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:650px){.summary{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.chart-box{height:270px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>Онлайн-моніторинг магнітометра</h1>
+      <div class="meta" id="meta">Підключення до Firebase…</div>
+    </div>
+    <div class="controls">
+      <label class="control">Інтервал:
+        <select id="window">
+          <option value="10">10 секунд</option>
+          <option value="60" selected>1 хвилина</option>
+          <option value="300">5 хвилин</option>
+        </select>
+      </label>
+      <label class="control"><input type="checkbox" id="pause"> Пауза</label>
+      <div class="badge"><span class="dot" id="dot"></span><span id="statusText">Магнітометр офлайн</span></div>
+    </div>
+  </div>
+
+  <section class="summary">
+    <div class="summary-item"><div class="label">Час ноутбука</div><div class="value" id="stationTime">—</div></div>
+    <div class="summary-item"><div class="label">Частота дискретизації</div><div class="value" id="sampleRate">—</div></div>
+    <div class="summary-item"><div class="label">Останнє оновлення</div><div class="value" id="age">—</div></div>
+  </section>
+
+  <main class="stack" id="stack"></main>
+  <div class="footer" id="footer">MGX / MGY / MGZ показані у сирих counts. Повний 8-канальний потік зберігається локально у HDF5.</div>
+</div>
+
+<script>
+const DB="https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app";
+const ROOT="/public/mag";
+const CHANNELS=["MGX","MGY","MGZ"];
+const pointsBySlot=new Map();
+let status={},pointSource=null,statusSource=null,dirty=true,paused=false;
+
+function sci(v){
+  if(!Number.isFinite(v))return "—";
+  if(v===0)return "0";
+  return Math.abs(v)>=1e-3&&Math.abs(v)<1e6
+    ?v.toLocaleString("uk-UA",{maximumSignificantDigits:7})
+    :v.toExponential(4);
+}
+function timeText(ms,full=false){
+  if(!Number.isFinite(ms))return "—";
+  return new Date(ms).toLocaleTimeString("uk-UA",{
+    hour:"2-digit",minute:"2-digit",second:"2-digit",
+    fractionalSecondDigits:full?3:undefined
+  });
+}
+function detail(v){return `${sci(v)} counts`}
+function statBox(l,v,t=""){return `<div class="stat" title="${t||v}"><div class="stat-label">${l}</div><div class="stat-value">${v}</div></div>`}
+
+const stack=document.getElementById("stack");
+for(const n of CHANNELS){
+  stack.insertAdjacentHTML("beforeend",
+    `<section class="card">
+      <div class="head">
+        <div class="title"><h2>${n}</h2><div class="unit">Сирий сигнал, counts</div></div>
+        <div class="stats" id="stats-${n}"></div>
+      </div>
+      <div class="chart-box"><canvas id="${n}"></canvas></div>
+    </section>`);
+}
+
+const charts={};
+for(const n of CHANNELS){
+  charts[n]=new Chart(document.getElementById(n),{
+    type:"line",
+    data:{datasets:[{
+      label:n,data:[],borderColor:"#4db2ff",backgroundColor:"rgba(77,178,255,0)",
+      borderWidth:1.1,pointRadius:0,pointHitRadius:7,tension:0,spanGaps:false
+    }]},
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,
+      interaction:{mode:"nearest",intersect:false,axis:"x"},
+      plugins:{
+        legend:{display:false},
+        decimation:{enabled:true,algorithm:"min-max",threshold:2000},
+        tooltip:{
+          displayColors:false,
+          callbacks:{
+            title:x=>x.length?timeText(x[0].parsed.x,true):"",
+            label:c=>`${n}: ${detail(c.parsed.y)}`
+          }
+        }
+      },
+      scales:{
+        x:{
+          type:"linear",
+          ticks:{maxTicksLimit:9,color:"#94a7c5",callback:v=>timeText(Number(v))},
+          grid:{color:"rgba(147,169,204,.14)"},
+          title:{display:true,text:"Час ноутбука",color:"#94a7c5"}
+        },
+        y:{
+          grace:"8%",
+          ticks:{color:"#94a7c5",callback:v=>sci(Number(v))},
+          grid:{color:"rgba(147,169,204,.14)"},
+          title:{display:true,text:"counts",color:"#94a7c5"}
+        }
+      }
+    }
+  });
+}
+
+function validRecord(r){
+  return r&&typeof r==="object"&&Number.isFinite(Number(r.t))&&
+    CHANNELS.every(n=>Array.isArray(r[n]));
+}
+function applyPointEvent(ev){
+  const p=JSON.parse(ev.data), path=p.path, data=p.data;
+  if(path==="/"){
+    pointsBySlot.clear();
+    if(data)for(const [k,v] of Object.entries(data))if(validRecord(v))pointsBySlot.set(k,v);
+  }else{
+    const k=path.replace(/^\//,"");
+    if(data===null)pointsBySlot.delete(k);
+    else if(validRecord(data))pointsBySlot.set(k,data);
+  }
+  dirty=true;
+}
+function applyPointPatch(ev){
+  const p=JSON.parse(ev.data);
+  if(p.path==="/"){
+    for(const [k,v] of Object.entries(p.data||{})){
+      if(v===null)pointsBySlot.delete(k);
+      else if(validRecord(v))pointsBySlot.set(k,v);
+    }
+  }else{
+    applyPointEvent(ev);
+  }
+  dirty=true;
+}
+function applyStatus(ev){
+  const p=JSON.parse(ev.data);
+  if(p.path==="/")status=p.data||{};
+  else status[p.path.replace(/^\//,"")]=p.data;
+  dirty=true;
+}
+function closeStreams(){
+  if(pointSource){pointSource.close();pointSource=null}
+  if(statusSource){statusSource.close();statusSource=null}
+}
+function connect(){
+  if(paused||document.hidden)return;
+  closeStreams();
+  pointSource=new EventSource(DB+ROOT+"/points.json");
+  pointSource.addEventListener("put",applyPointEvent);
+  pointSource.addEventListener("patch",applyPointPatch);
+  pointSource.onerror=()=>{document.getElementById("meta").textContent="Повторне підключення до Firebase…"};
+  statusSource=new EventSource(DB+ROOT+"/status.json");
+  statusSource.addEventListener("put",applyStatus);
+  statusSource.addEventListener("patch",applyStatus);
+}
+
+function render(){
+  if(!dirty)return;
+  dirty=false;
+
+  const records=[...pointsBySlot.values()].filter(validRecord).sort((a,b)=>Number(a.t)-Number(b.t));
+  const newest=records.length
+    ?Number(records.at(-1).t)+(Number(records.at(-1).dt_ms)||31.25)*records.at(-1).MGX.length
+    :Date.now();
+  const win=Number(document.getElementById("window").value);
+  const cut=newest-win*1000;
+  const visible=records.filter(r=>{
+    const duration=(Number(r.dt_ms)||31.25)*Math.max(...CHANNELS.map(n=>r[n].length));
+    return Number(r.t)+duration>=cut;
+  });
+
+  for(const n of CHANNELS){
+    const signal=[];
+    let min=Infinity,max=-Infinity,peak=null,latest=NaN,sumSq=0,count=0;
+
+    for(const r of visible){
+      const dt=Number(r.dt_ms)||31.25;
+      const arr=r[n];
+      for(let i=0;i<arr.length;i++){
+        const y=Number(arr[i]);
+        const x=Number(r.t)+i*dt;
+        if(!Number.isFinite(y)||!Number.isFinite(x))continue;
+        if(x<cut)continue;
+        signal.push({x,y});
+        if(y<min)min=y;
+        if(y>max)max=y;
+        if(!peak||Math.abs(y)>Math.abs(peak.y))peak={x,y};
+        latest=y;
+        sumSq+=y*y;
+        count++;
+      }
+    }
+
+    charts[n].data.datasets[0].data=signal;
+    charts[n].options.scales.x.min=cut;
+    charts[n].options.scales.x.max=newest;
+    charts[n].update("none");
+
+    const rms=count?Math.sqrt(sumSq/count):NaN;
+    document.getElementById("stats-"+n).innerHTML=[
+      statBox("Поточне",detail(latest)),
+      statBox("Макс. |значення|",peak?detail(Math.abs(peak.y)):"—",peak?timeText(peak.x,true):""),
+      statBox("RMS",detail(rms)),
+      statBox("Мінімум",Number.isFinite(min)?detail(min):"—"),
+      statBox("Максимум",Number.isFinite(max)?detail(max):"—"),
+      statBox("Точок",String(count))
+    ].join("");
+  }
+
+  const age=Number.isFinite(Number(status.updated_ms))?(Date.now()-Number(status.updated_ms))/1000:null;
+  const online=age!==null&&age<15;
+  document.getElementById("dot").classList.toggle("ok",online);
+  document.getElementById("statusText").textContent=online?"Магнітометр онлайн":"Магнітометр офлайн";
+  document.getElementById("meta").textContent=`192.168.7.108:16031 · Firebase live · показано ${win} с · час із Windows-ноутбука`;
+  document.getElementById("stationTime").textContent=Number.isFinite(Number(status.laptop_time_ms))
+    ?new Date(Number(status.laptop_time_ms)).toLocaleString("uk-UA"):"—";
+  document.getElementById("sampleRate").textContent=status.sample_rate_hz
+    ?`${Number(status.sample_rate_hz).toLocaleString("uk-UA")} Гц`:"—";
+  document.getElementById("age").textContent=age===null?"—":`${Math.max(0,age).toFixed(1)} с тому`;
+}
+document.getElementById("window").addEventListener("change",()=>{dirty=true});
+document.getElementById("pause").addEventListener("change",e=>{
+  paused=e.target.checked;
+  if(paused)closeStreams(); else connect();
+});
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden)closeStreams(); else connect();
+});
+setInterval(render,100);
+setInterval(()=>{dirty=true},1000);
+connect();
+</script>
+</body>
+</html>
