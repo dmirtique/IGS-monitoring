@@ -58,7 +58,7 @@ h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}
   </div>
 
   <section class="summary">
-    <div class="summary-item"><div class="label">Час Windows-ноутбука</div><div class="value" id="stationTime">—</div></div>
+    <div class="summary-item"><div class="label">Час пристрою</div><div class="value" id="stationTime">—</div></div>
     <div class="summary-item"><div class="label">Частота дискретизації</div><div class="value" id="sampleRate">—</div></div>
     <div class="summary-item"><div class="label">Останнє оновлення</div><div class="value" id="age">—</div></div>
   </section>
@@ -133,7 +133,7 @@ for(const n of CHANNELS){
           type:"linear",
           ticks:{maxTicksLimit:9,color:"#94a7c5",callback:v=>timeText(Number(v))},
           grid:{color:"rgba(147,169,204,.14)"},
-          title:{display:true,text:"Час Windows-ноутбука",color:"#94a7c5"}
+          title:{display:true,text:"Час пристрою",color:"#94a7c5"}
         },
         y:{
           grace:"8%",
