@@ -7,24 +7,34 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
 <style>
 :root{color-scheme:dark;--bg:#08111f;--panel:#101b2e;--panel2:#0c1728;--text:#edf4ff;--muted:#94a7c5;--border:#263a5c;--ok:#3ddc97;--bad:#ff6b78}
-*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
 .wrap{width:min(1540px,calc(100% - 28px));margin:auto;padding:18px 0 34px}
 .top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px;margin-bottom:14px}
-h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}.meta{color:var(--muted);font-size:14px}
+h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}
+.meta{color:var(--muted);font-size:14px}
 .controls{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
 .badge,.control{min-height:38px;display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--border);border-radius:10px;background:var(--panel);font-size:14px}
-.control select{border:0;background:transparent;color:var(--text);font:inherit}.dot{width:10px;height:10px;border-radius:50%;background:var(--bad)}.dot.ok{background:var(--ok)}
+.control select{border:0;background:transparent;color:var(--text);font:inherit}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--bad)}
+.dot.ok{background:var(--ok)}
 .summary{display:grid;grid-template-columns:repeat(3,minmax(170px,1fr));gap:10px;margin-bottom:14px}
 .summary-item{padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}
-.label{color:var(--muted);font-size:12px;margin-bottom:4px}.value{font-size:15px;font-weight:650}
-.stack{display:grid;gap:14px}.card{padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--panel)}
-.head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin-bottom:10px}.title h2{margin:0 0 4px;font-size:18px}.unit{color:var(--muted);font-size:13px}
+.label{color:var(--muted);font-size:12px;margin-bottom:4px}
+.value{font-size:15px;font-weight:650}
+.stack{display:grid;gap:14px}
+.card{padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--panel)}
+.head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin-bottom:10px}
+.title h2{margin:0 0 4px;font-size:18px}
+.unit{color:var(--muted);font-size:13px}
 .stats{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px;flex:1 1 900px}
 .stat{padding:8px 10px;border:1px solid rgba(118,149,192,.22);border-radius:9px;background:var(--panel2);min-width:0}
-.stat-label{color:var(--muted);font-size:11px;margin-bottom:3px}.stat-value{font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.chart-box{height:340px}.footer{margin-top:13px;color:var(--muted);font-size:12px;text-align:center}
+.stat-label{color:var(--muted);font-size:11px;margin-bottom:3px}
+.stat-value{font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chart-box{height:300px}
+.footer{margin-top:13px;color:var(--muted);font-size:12px;text-align:center}
 @media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:650px){.summary{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.chart-box{height:270px}}
+@media(max-width:650px){.summary{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.chart-box{height:250px}}
 </style>
 </head>
 <body>
@@ -48,27 +58,27 @@ h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}.meta{color:var(--muted);font-s
   </div>
 
   <section class="summary">
-    <div class="summary-item"><div class="label">Час ноутбука</div><div class="value" id="stationTime">—</div></div>
+    <div class="summary-item"><div class="label">Час Windows-ноутбука</div><div class="value" id="stationTime">—</div></div>
     <div class="summary-item"><div class="label">Частота дискретизації</div><div class="value" id="sampleRate">—</div></div>
     <div class="summary-item"><div class="label">Останнє оновлення</div><div class="value" id="age">—</div></div>
   </section>
 
   <main class="stack" id="stack"></main>
-  <div class="footer" id="footer">MGX / MGY / MGZ показані у сирих counts. Повний 8-канальний потік зберігається локально у HDF5.</div>
+  <div class="footer">Усі 8 каналів показані у сирих counts. Повний 8-канальний потік 32 Гц зберігається локально у HDF5.</div>
 </div>
 
 <script>
 const DB="https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app";
 const ROOT="/public/mag";
-const CHANNELS=["MGX","MGY","MGZ"];
+const CHANNELS=["MGX","MGY","MGZ","LSU","LSV","LSW","TPR","PRS"];
 const pointsBySlot=new Map();
 let status={},pointSource=null,statusSource=null,dirty=true,paused=false;
 
 function sci(v){
   if(!Number.isFinite(v))return "—";
   if(v===0)return "0";
-  return Math.abs(v)>=1e-3&&Math.abs(v)<1e6
-    ?v.toLocaleString("uk-UA",{maximumSignificantDigits:7})
+  return Math.abs(v)>=1e-3&&Math.abs(v)<1e7
+    ?v.toLocaleString("uk-UA",{maximumSignificantDigits:8})
     :v.toExponential(4);
 }
 function timeText(ms,full=false){
@@ -79,14 +89,17 @@ function timeText(ms,full=false){
   });
 }
 function detail(v){return `${sci(v)} counts`}
-function statBox(l,v,t=""){return `<div class="stat" title="${t||v}"><div class="stat-label">${l}</div><div class="stat-value">${v}</div></div>`}
+function statBox(l,v,t=""){
+  return `<div class="stat" title="${t||v}"><div class="stat-label">${l}</div><div class="stat-value">${v}</div></div>`;
+}
 
 const stack=document.getElementById("stack");
 for(const n of CHANNELS){
+  const kind=["MGX","MGY","MGZ"].includes(n)?"Магнітометричний канал":"Допоміжний канал";
   stack.insertAdjacentHTML("beforeend",
     `<section class="card">
       <div class="head">
-        <div class="title"><h2>${n}</h2><div class="unit">Сирий сигнал, counts</div></div>
+        <div class="title"><h2>${n}</h2><div class="unit">${kind} · raw counts</div></div>
         <div class="stats" id="stats-${n}"></div>
       </div>
       <div class="chart-box"><canvas id="${n}"></canvas></div>
@@ -120,7 +133,7 @@ for(const n of CHANNELS){
           type:"linear",
           ticks:{maxTicksLimit:9,color:"#94a7c5",callback:v=>timeText(Number(v))},
           grid:{color:"rgba(147,169,204,.14)"},
-          title:{display:true,text:"Час ноутбука",color:"#94a7c5"}
+          title:{display:true,text:"Час Windows-ноутбука",color:"#94a7c5"}
         },
         y:{
           grace:"8%",
@@ -138,7 +151,7 @@ function validRecord(r){
     CHANNELS.every(n=>Array.isArray(r[n]));
 }
 function applyPointEvent(ev){
-  const p=JSON.parse(ev.data), path=p.path, data=p.data;
+  const p=JSON.parse(ev.data),path=p.path,data=p.data;
   if(path==="/"){
     pointsBySlot.clear();
     if(data)for(const [k,v] of Object.entries(data))if(validRecord(v))pointsBySlot.set(k,v);
@@ -157,7 +170,9 @@ function applyPointPatch(ev){
       else if(validRecord(v))pointsBySlot.set(k,v);
     }
   }else{
-    applyPointEvent(ev);
+    const k=p.path.replace(/^\//,"");
+    if(p.data===null)pointsBySlot.delete(k);
+    else if(validRecord(p.data))pointsBySlot.set(k,p.data);
   }
   dirty=true;
 }
@@ -187,14 +202,18 @@ function render(){
   if(!dirty)return;
   dirty=false;
 
-  const records=[...pointsBySlot.values()].filter(validRecord).sort((a,b)=>Number(a.t)-Number(b.t));
+  const records=[...pointsBySlot.values()]
+    .filter(validRecord)
+    .sort((a,b)=>Number(a.t)-Number(b.t));
+
   const newest=records.length
     ?Number(records.at(-1).t)+(Number(records.at(-1).dt_ms)||31.25)*records.at(-1).MGX.length
     :Date.now();
   const win=Number(document.getElementById("window").value);
   const cut=newest-win*1000;
+
   const visible=records.filter(r=>{
-    const duration=(Number(r.dt_ms)||31.25)*Math.max(...CHANNELS.map(n=>r[n].length));
+    const duration=(Number(r.dt_ms)||31.25)*r.MGX.length;
     return Number(r.t)+duration>=cut;
   });
 
@@ -208,8 +227,7 @@ function render(){
       for(let i=0;i<arr.length;i++){
         const y=Number(arr[i]);
         const x=Number(r.t)+i*dt;
-        if(!Number.isFinite(y)||!Number.isFinite(x))continue;
-        if(x<cut)continue;
+        if(!Number.isFinite(y)||!Number.isFinite(x)||x<cut)continue;
         signal.push({x,y});
         if(y<min)min=y;
         if(y>max)max=y;
@@ -236,17 +254,20 @@ function render(){
     ].join("");
   }
 
-  const age=Number.isFinite(Number(status.updated_ms))?(Date.now()-Number(status.updated_ms))/1000:null;
+  const age=Number.isFinite(Number(status.updated_ms))
+    ?(Date.now()-Number(status.updated_ms))/1000:null;
   const online=age!==null&&age<15;
   document.getElementById("dot").classList.toggle("ok",online);
   document.getElementById("statusText").textContent=online?"Магнітометр онлайн":"Магнітометр офлайн";
-  document.getElementById("meta").textContent=`192.168.7.108:16031 · Firebase live · показано ${win} с · час із Windows-ноутбука`;
+  document.getElementById("meta").textContent=
+    `192.168.7.108:16031 · Firebase live · 8 каналів · показано ${win} с`;
   document.getElementById("stationTime").textContent=Number.isFinite(Number(status.laptop_time_ms))
     ?new Date(Number(status.laptop_time_ms)).toLocaleString("uk-UA"):"—";
   document.getElementById("sampleRate").textContent=status.sample_rate_hz
     ?`${Number(status.sample_rate_hz).toLocaleString("uk-UA")} Гц`:"—";
   document.getElementById("age").textContent=age===null?"—":`${Math.max(0,age).toFixed(1)} с тому`;
 }
+
 document.getElementById("window").addEventListener("change",()=>{dirty=true});
 document.getElementById("pause").addEventListener("change",e=>{
   paused=e.target.checked;
