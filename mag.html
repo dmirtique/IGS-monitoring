@@ -16,8 +16,9 @@ h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}
 .controls{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
 .badge,.control{min-height:38px;display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--border);border-radius:10px;background:var(--panel);font-size:14px}
 .control select{border:0;background:transparent;color:var(--text);font:inherit}
-.dot{width:10px;height:10px;border-radius:50%;background:var(--bad)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}
 .dot.ok{background:var(--ok)}
+.dot.bad{background:var(--bad)}
 .summary{display:grid;grid-template-columns:repeat(3,minmax(170px,1fr));gap:10px;margin-bottom:14px}
 .summary-item{padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}
 .label{color:var(--muted);font-size:12px;margin-bottom:4px}
@@ -53,7 +54,7 @@ h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}
         </select>
       </label>
       <label class="control"><input type="checkbox" id="pause"> Пауза</label>
-      <div class="badge"><span class="dot" id="dot"></span><span id="statusText">Магнітометр офлайн</span></div>
+      <div class="badge"><span class="dot" id="dot"></span><span id="statusText">Очікування даних…</span></div>
     </div>
   </div>
 
@@ -256,9 +257,11 @@ function render(){
 
   const age=Number.isFinite(Number(status.updated_ms))
     ?(Date.now()-Number(status.updated_ms))/1000:null;
-  const online=age!==null&&age<300;
+  const hasStatus=age!==null;
+  const online=hasStatus&&age<300;
   document.getElementById("dot").classList.toggle("ok",online);
-  document.getElementById("statusText").textContent=online?"Магнітометр онлайн":"Магнітометр офлайн";
+  document.getElementById("dot").classList.toggle("bad",hasStatus&&!online);
+  document.getElementById("statusText").textContent=!hasStatus?"Очікування даних…":(online?"Магнітометр онлайн":"Магнітометр офлайн");
   document.getElementById("meta").textContent=
     `192.168.7.108:16031 · Firebase live · 8 каналів · показано ${win} с`;
   document.getElementById("stationTime").textContent=Number.isFinite(Number(status.laptop_time_ms))
