@@ -65,7 +65,7 @@ h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}
   </section>
 
   <main class="stack" id="stack"></main>
-  <div class="footer">Усі 8 каналів показані у сирих counts. Повний 8-канальний потік 32 Гц зберігається локально у HDF5.</div>
+  <div class="footer">Усі 8 каналів показані у raw counts. Короткі пропуски на графіку візуально заповнюються інтерполяцією.</div>
 </div>
 
 <script>
@@ -239,7 +239,24 @@ function render(){
       }
     }
 
-    charts[n].data.datasets[0].data=signal;
+    const displaySignal=[];
+    const step=1000/32;
+    const maxFill=15000;
+    for(let j=0;j<signal.length;j++){
+      if(j>0){
+        const a=signal[j-1],b=signal[j];
+        const gap=b.x-a.x;
+        if(gap>step*1.5 && gap<=maxFill){
+          const missing=Math.round(gap/step)-1;
+          for(let k=1;k<=missing;k++){
+            const f=k/(missing+1);
+            displaySignal.push({x:a.x+k*step,y:a.y+(b.y-a.y)*f});
+          }
+        }
+      }
+      displaySignal.push(signal[j]);
+    }
+    charts[n].data.datasets[0].data=displaySignal;
     charts[n].options.scales.x.min=cut;
     charts[n].options.scales.x.max=newest;
     charts[n].update("none");
