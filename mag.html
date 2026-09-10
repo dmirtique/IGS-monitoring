@@ -65,7 +65,7 @@ h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}
   </section>
 
   <main class="stack" id="stack"></main>
-  <div class="footer">Усі 8 каналів показані у raw counts. Короткі пропуски на графіку візуально заповнюються інтерполяцією.</div>
+  <div class="footer">Усі 8 каналів показані у raw counts. Пропуски live-графіка візуально відновлюються за локальною формою сигналу; статистика рахується лише за реальними даними.</div>
 </div>
 
 <script>
@@ -242,15 +242,59 @@ function render(){
     const displaySignal=[];
     const step=1000/32;
     const maxFill=15000;
+
+    function localPeriod(endIndex){
+      const maxP=Math.min(48,Math.floor(Math.min(128,endIndex+1)/3));
+      if(maxP<2)return 0;
+      let bestP=0,bestErr=Infinity;
+      const first=Math.max(0,endIndex-127);
+      for(let p=2;p<=maxP;p++){
+        let err=0,c=0;
+        const from=Math.max(first+p,endIndex-95);
+        for(let q=from;q<=endIndex;q++){
+          const d=signal[q].y-signal[q-p].y;
+          err+=d*d;
+          c++;
+        }
+        if(c>=12){
+          const mse=err/c;
+          if(mse<bestErr){bestErr=mse;bestP=p;}
+        }
+      }
+      return bestP;
+    }
+
     for(let j=0;j<signal.length;j++){
       if(j>0){
-        const a=signal[j-1],b=signal[j];
-        const gap=b.x-a.x;
+        const left=signal[j-1],right=signal[j];
+        const gap=right.x-left.x;
         if(gap>step*1.5 && gap<=maxFill){
           const missing=Math.round(gap/step)-1;
-          for(let k=1;k<=missing;k++){
-            const f=k/(missing+1);
-            displaySignal.push({x:a.x+k*step,y:a.y+(b.y-a.y)*f});
+          const p=localPeriod(j-1);
+
+          if(p>=2 && j>=p && j+p<=signal.length){
+            for(let k=1;k<=missing;k++){
+              const f=k/(missing+1);
+              const li=j-p+((k-1)%p);
+              const back=missing-k;
+              const ri=j+(p-1-(back%p));
+              const yl=signal[li].y;
+              const yr=signal[ri].y;
+              displaySignal.push({
+                x:left.x+k*step,
+                y:yl*(1-f)+yr*f,
+                synthetic:true
+              });
+            }
+          }else{
+            for(let k=1;k<=missing;k++){
+              const f=k/(missing+1);
+              displaySignal.push({
+                x:left.x+k*step,
+                y:left.y+(right.y-left.y)*f,
+                synthetic:true
+              });
+            }
           }
         }
       }
