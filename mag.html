@@ -65,7 +65,7 @@ h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}
   </section>
 
   <main class="stack" id="stack"></main>
-  <div class="footer">Усі 8 каналів показані у raw counts. Пропуски live-графіка візуально реконструюються за локальною періодикою сигналу; статистика рахується лише за реальними даними.</div>
+  <div class="footer">Усі 8 каналів показані у raw counts. Короткі пропуски live-графіка візуально заповнюються повторенням останньої локальної форми сигналу; статистика рахується лише за реальними даними.</div>
 </div>
 
 <script>
@@ -226,31 +226,16 @@ function fillGapPeriodic(signal,j,displaySignal,step,maxFill){
 
   const missing=Math.round(gap/step)-1;
   if(missing<=0)return;
-  const period=estimatePeriod(signal,j-1);
 
-  if(period<2||displaySignal.length<period){
-    for(let k=1;k<=missing;k++){
-      const f=k/(missing+1);
-      displaySignal.push({x:left.x+k*step,y:left.y+(right.y-left.y)*f,synthetic:true});
-    }
-    return;
-  }
+  let period=estimatePeriod(signal,j-1);
+  if(period<2)period=Math.min(32,displaySignal.length);
+  if(period<2)return;
 
-  const generated=[];
-  for(let k=1;k<=missing+1;k++){
-    const idx=displaySignal.length+generated.length-period;
-    const y=idx>=displaySignal.length
-      ?generated[idx-displaySignal.length]
-      :displaySignal[idx].y;
-    generated.push(y);
-  }
-
-  const endCorrection=right.y-generated[missing];
+  const template=displaySignal.slice(-period).map(p=>p.y);
   for(let k=1;k<=missing;k++){
-    const f=k/(missing+1);
     displaySignal.push({
       x:left.x+k*step,
-      y:generated[k-1]+endCorrection*f,
+      y:template[(k-1)%template.length],
       synthetic:true
     });
   }
@@ -298,7 +283,7 @@ function render(){
 
     const displaySignal=[];
     const step=1000/32;
-    const maxFill=15000;
+    const maxFill=30000;
     for(let j=0;j<signal.length;j++){
       if(j>0)fillGapPeriodic(signal,j,displaySignal,step,maxFill);
       displaySignal.push(signal[j]);
