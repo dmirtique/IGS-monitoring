@@ -21,25 +21,36 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Ensure website offline threshold is 15 minutes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for name in ("index.html", "st107.html", "mag.html"):
+              p = Path(name)
+              text = p.read_text(encoding="utf-8")
+              new = text.replace("age<300", "age<900")
+              if new != text:
+                  p.write_text(new, encoding="utf-8")
+                  print(f"Updated {name}: 300s -> 900s")
+              else:
+                  print(f"No threshold change needed in {name}")
+          PY
+
       - name: Check stations and send Telegram alerts
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: python3 telegram_watchdog.py
 
-      - name: Persist watchdog state
+      - name: Persist watchdog state and threshold changes
         if: always()
         run: |
-          if git diff --quiet -- .watchdog_state.json 2>/dev/null && [ -f .watchdog_state.json ]; then
-            echo "Watchdog state unchanged"
-            exit 0
-          fi
-          if [ ! -f .watchdog_state.json ]; then
-            echo "No watchdog state file"
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .watchdog_state.json
-          git commit -m "Update station watchdog state" || exit 0
+          git add .watchdog_state.json index.html st107.html mag.html 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "Nothing to persist"
+            exit 0
+          fi
+          git commit -m "Update station watchdog state and thresholds"
           git pull --rebase origin main
           git push origin HEAD:main
