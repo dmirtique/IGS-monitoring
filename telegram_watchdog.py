@@ -77,6 +77,12 @@ def main():
     current = dict(previous)
     had_error = False
 
+    if not previous:
+        send_telegram(
+            token,
+            "✅ IGS watchdog активовано\nПеревірка ZIR-8, ST107 і MAG кожні 5 хв. Офлайн — після 15 хв без нових даних.",
+        )
+
     for key, (label, path) in STATIONS.items():
         try:
             status = get_json(DB + path) or {}
