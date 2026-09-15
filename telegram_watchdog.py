@@ -5,11 +5,13 @@ import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 DB = "https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app"
 CHAT_ID = "-1004425577425"
 OFFLINE_AFTER_MS = 15 * 60 * 1000
 STATE_FILE = ".watchdog_state.json"
+KYIV_TZ = ZoneInfo("Europe/Kyiv")
 
 STATIONS = {
     "zir8": ("ST106", "/public/status.json"),
@@ -40,7 +42,7 @@ def send_telegram(token, text):
 def fmt_time(ms):
     if not isinstance(ms, (int, float)):
         return "невідомо"
-    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).astimezone().strftime("%d.%m.%Y %H:%M:%S")
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).astimezone(KYIV_TZ).strftime("%d.%m.%Y %H:%M:%S")
 
 
 def load_state():
