@@ -26,7 +26,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Ensure website offline threshold is 15 minutes
+      - name: Ensure website labels and offline threshold
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -34,11 +34,13 @@ jobs:
               p = Path(name)
               text = p.read_text(encoding="utf-8")
               new = text.replace("age<300", "age<900")
+              if name == "index.html":
+                  new = new.replace("ZIR-8", "ST106")
               if new != text:
                   p.write_text(new, encoding="utf-8")
-                  print(f"Updated {name}: 300s -> 900s")
+                  print(f"Updated {name}")
               else:
-                  print(f"No threshold change needed in {name}")
+                  print(f"No change needed in {name}")
           PY
 
       - name: Check stations and send Telegram alerts
@@ -46,7 +48,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: python3 telegram_watchdog.py
 
-      - name: Persist watchdog state and threshold changes
+      - name: Persist watchdog state and website changes
         if: always()
         run: |
           git config user.name "github-actions[bot]"
@@ -56,6 +58,6 @@ jobs:
             echo "Nothing to persist"
             exit 0
           fi
-          git commit -m "Update station watchdog state and thresholds"
+          git commit -m "Update station watchdog state and website labels"
           git pull --rebase origin main
           git push origin HEAD:main
