@@ -1,3 +1,4 @@
+# Bootstrap run after Telegram secret setup
 name: Telegram station watchdog
 
 on:
