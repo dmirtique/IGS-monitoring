@@ -1,6 +1,10 @@
 name: Telegram station watchdog
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/telegram-watchdog.yml"
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
