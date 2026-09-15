@@ -57,12 +57,24 @@ def save_state(state):
         f.write("\n")
 
 
+def offline_text(label, updated_ms, age_ms):
+    mins = "невідомо" if age_ms is None else f"{age_ms / 60000:.1f} хв"
+    return (
+        f"🔴 {label} офлайн\n"
+        f"Останнє оновлення: {fmt_time(updated_ms)}\n"
+        f"Немає нових даних: {mins}"
+    )
+
+
 def main():
-    now_ms = int(time.time() * 1000)
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    if not token:
+        print("TELEGRAM_BOT_TOKEN is missing; state is not changed", file=sys.stderr)
+        sys.exit(2)
+
+    now_ms = int(time.time() * 1000)
     previous = load_state()
     current = dict(previous)
-    first_run = not bool(previous)
     had_error = False
 
     for key, (label, path) in STATIONS.items():
@@ -74,27 +86,24 @@ def main():
             new_state = "online" if online else "offline"
             old_state = previous.get(key)
 
-            if first_run or old_state is None:
+            if old_state is None:
+                if new_state == "offline":
+                    send_telegram(token, offline_text(label, updated_ms, age_ms))
+                    print(f"{label}: initial offline notified")
+                else:
+                    print(f"{label}: initial online")
                 current[key] = new_state
-                print(f"{label}: initial {new_state}")
                 continue
 
             if new_state == old_state:
                 print(f"{label}: unchanged {new_state}")
                 continue
 
-            if not token:
-                print(f"{label}: state changed to {new_state}, but TELEGRAM_BOT_TOKEN is missing", file=sys.stderr)
-                had_error = True
-                continue
-
             if new_state == "offline":
-                mins = "невідомо" if age_ms is None else f"{age_ms / 60000:.1f} хв"
-                text = f"🔴 {label} офлайн\nОстаннє оновлення: {fmt_time(updated_ms)}\nНемає нових даних: {mins}"
+                send_telegram(token, offline_text(label, updated_ms, age_ms))
             else:
-                text = f"🟢 {label} онлайн\nПередача даних відновлена."
+                send_telegram(token, f"🟢 {label} онлайн\nПередача даних відновлена.")
 
-            send_telegram(token, text)
             current[key] = new_state
             print(f"{label}: notified {new_state}")
 
