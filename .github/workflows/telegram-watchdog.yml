@@ -1,4 +1,4 @@
-# Bootstrap run after Telegram secret setup
+# Final offline test trigger
 name: Telegram station watchdog
 
 on:
