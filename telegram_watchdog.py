@@ -12,7 +12,7 @@ OFFLINE_AFTER_MS = 15 * 60 * 1000
 STATE_FILE = ".watchdog_state.json"
 
 STATIONS = {
-    "zir8": ("ZIR-8", "/public/status.json"),
+    "zir8": ("ST106", "/public/status.json"),
     "st107": ("ST107", "/public/st107/status.json"),
     "mag": ("MAG", "/public/mag/status.json"),
 }
@@ -80,7 +80,7 @@ def main():
     if not previous:
         send_telegram(
             token,
-            "✅ IGS watchdog активовано\nПеревірка ZIR-8, ST107 і MAG кожні 5 хв. Офлайн — після 15 хв без нових даних.",
+            "✅ IGS watchdog активовано\nПеревірка ST106, ST107 і MAG кожні 5 хв. Офлайн — після 15 хв без нових даних.",
         )
 
     for key, (label, path) in STATIONS.items():
