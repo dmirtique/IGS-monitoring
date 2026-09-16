@@ -1,4 +1,4 @@
-# Fix ST107 freshness source: use station data time, not logger heartbeat
+# ST107 freshness is based on the newest real data packet, not logger heartbeat
 name: Telegram station watchdog
 
 on:
@@ -38,7 +38,10 @@ jobs:
               if name == "index.html":
                   new = new.replace("ZIR-8", "ST106")
               if name == "st107.html":
-                  new = new.replace("status.updated_ms", "status.station_time_ms")
+                  new = new.replace(
+                      "  const age=Number.isFinite(Number(status.station_time_ms))\n    ?(Date.now()-Number(status.station_time_ms))/1000:null;",
+                      "  const latestDataMs=records.length?Number(records.at(-1)[0])+bucketMs:null;\n  const age=Number.isFinite(latestDataMs)?(Date.now()-latestDataMs)/1000:null;",
+                  )
               if new != text:
                   p.write_text(new, encoding="utf-8")
                   print(f"Updated {name}")
@@ -47,13 +50,24 @@ jobs:
 
           p = Path("telegram_watchdog.py")
           text = p.read_text(encoding="utf-8")
-          new = text.replace(
-              'updated_ms = status.get("updated_ms")',
-              'updated_ms = status.get("station_time_ms") if key == "st107" else status.get("updated_ms")',
-          )
+          old = '            updated_ms = status.get("station_time_ms") if key == "st107" else status.get("updated_ms")'
+          replacement = '''            if key == "st107":
+                points = get_json(DB + "/public/st107/points.json") or {}
+                point_times = []
+                for record in points.values():
+                    if isinstance(record, list) and record:
+                        try:
+                            point_times.append(int(float(record[0])))
+                        except (TypeError, ValueError):
+                            pass
+                bucket_ms = int(float(status.get("bucket_seconds", 1.0)) * 1000)
+                updated_ms = max(point_times) + bucket_ms if point_times else None
+            else:
+                updated_ms = status.get("updated_ms")'''
+          new = text.replace(old, replacement)
           if new != text:
               p.write_text(new, encoding="utf-8")
-              print("Updated telegram_watchdog.py for ST107 freshness")
+              print("Updated telegram_watchdog.py to use latest ST107 data packet")
           else:
               print("No watchdog freshness change needed")
           PY
@@ -73,6 +87,6 @@ jobs:
             echo "Nothing to persist"
             exit 0
           fi
-          git commit -m "Use real ST107 data freshness"
+          git commit -m "Use latest ST107 data packet for freshness"
           git pull --rebase origin main
           git push origin HEAD:main
