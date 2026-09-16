@@ -88,21 +88,7 @@ def main():
     for key, (label, path) in STATIONS.items():
         try:
             status = get_json(DB + path) or {}
-
-            if key == "st107":
-                points = get_json(DB + "/public/st107/points.json") or {}
-                point_times = []
-                for record in points.values():
-                    if isinstance(record, list) and record:
-                        try:
-                            point_times.append(int(float(record[0])))
-                        except (TypeError, ValueError):
-                            pass
-                bucket_ms = int(float(status.get("bucket_seconds", 1.0)) * 1000)
-                updated_ms = max(point_times) + bucket_ms if point_times else None
-            else:
-                updated_ms = status.get("updated_ms")
-
+            updated_ms = status.get("station_time_ms") if key == "st107" else status.get("updated_ms")
             age_ms = now_ms - int(updated_ms) if updated_ms is not None else None
             online = age_ms is not None and age_ms < OFFLINE_AFTER_MS
             new_state = "online" if online else "offline"
