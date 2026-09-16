@@ -1,4 +1,4 @@
-# Final offline test trigger
+# Manual trigger after stations restored
 name: Telegram station watchdog
 
 on:
