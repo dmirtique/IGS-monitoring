@@ -33,7 +33,7 @@ jobs:
           for name in ("index.html", "st107.html", "mag.html"):
               p = Path(name)
               text = p.read_text(encoding="utf-8")
-              new = text.replace("age<300", "age<900")
+              new = text.replace("age<900", "age<300")
               if name == "index.html":
                   new = new.replace("ZIR-8", "ST106")
               if new != text:
