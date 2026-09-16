@@ -1,4 +1,4 @@
-# Verification trigger: ST107 freshness uses newest real data packet
+# ST107 freshness uses the actual station timestamp, not the logger heartbeat
 name: Telegram station watchdog
 
 on:
@@ -26,7 +26,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Ensure website labels, thresholds and ST107 freshness
+      - name: Ensure website labels and offline threshold
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -39,37 +39,14 @@ jobs:
                   new = new.replace("ZIR-8", "ST106")
               if name == "st107.html":
                   new = new.replace(
-                      "  const age=Number.isFinite(Number(status.station_time_ms))\n    ?(Date.now()-Number(status.station_time_ms))/1000:null;",
                       "  const latestDataMs=records.length?Number(records.at(-1)[0])+bucketMs:null;\n  const age=Number.isFinite(latestDataMs)?(Date.now()-latestDataMs)/1000:null;",
+                      "  const age=Number.isFinite(Number(status.station_time_ms))\n    ?(Date.now()-Number(status.station_time_ms))/1000:null;",
                   )
               if new != text:
                   p.write_text(new, encoding="utf-8")
                   print(f"Updated {name}")
               else:
                   print(f"No change needed in {name}")
-
-          p = Path("telegram_watchdog.py")
-          text = p.read_text(encoding="utf-8")
-          old = '            updated_ms = status.get("station_time_ms") if key == "st107" else status.get("updated_ms")'
-          replacement = '''            if key == "st107":
-                points = get_json(DB + "/public/st107/points.json") or {}
-                point_times = []
-                for record in points.values():
-                    if isinstance(record, list) and record:
-                        try:
-                            point_times.append(int(float(record[0])))
-                        except (TypeError, ValueError):
-                            pass
-                bucket_ms = int(float(status.get("bucket_seconds", 1.0)) * 1000)
-                updated_ms = max(point_times) + bucket_ms if point_times else None
-            else:
-                updated_ms = status.get("updated_ms")'''
-          new = text.replace(old, replacement)
-          if new != text:
-              p.write_text(new, encoding="utf-8")
-              print("Updated telegram_watchdog.py to use latest ST107 data packet")
-          else:
-              print("No watchdog freshness change needed")
           PY
 
       - name: Check stations and send Telegram alerts
@@ -82,11 +59,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .watchdog_state.json index.html st107.html mag.html telegram_watchdog.py 2>/dev/null || true
+          git add .watchdog_state.json index.html st107.html mag.html 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "Nothing to persist"
             exit 0
           fi
-          git commit -m "Use latest ST107 data packet for freshness"
+          git commit -m "Use ST107 station time for freshness"
           git pull --rebase origin main
           git push origin HEAD:main
