@@ -258,7 +258,7 @@ function render(){
   const age=Number.isFinite(Number(status.updated_ms))
     ?(Date.now()-Number(status.updated_ms))/1000:null;
   const hasStatus=age!==null;
-  const online=hasStatus&&age<900;
+  const online=hasStatus&&age<300;
   document.getElementById("dot").classList.toggle("ok",online);
   document.getElementById("dot").classList.toggle("bad",hasStatus&&!online);
   document.getElementById("statusText").textContent=!hasStatus?"Очікування даних…":(online?"Магнітометр онлайн":"Магнітометр офлайн");
