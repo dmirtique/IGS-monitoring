@@ -1,4 +1,4 @@
-# Manual trigger after stations restored
+# Watchdog schedule offset from top-of-hour load
 name: Telegram station watchdog
 
 on:
@@ -7,7 +7,7 @@ on:
     paths:
       - ".github/workflows/telegram-watchdog.yml"
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "2-57/5 * * * *"
   workflow_dispatch:
 
 permissions:
