@@ -1,4 +1,4 @@
-# Watchdog schedule offset from top-of-hour load
+# Fix ST107 freshness source: use station data time, not logger heartbeat
 name: Telegram station watchdog
 
 on:
@@ -26,21 +26,36 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Ensure website labels and offline threshold
+      - name: Ensure website labels, thresholds and ST107 freshness
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
           for name in ("index.html", "st107.html", "mag.html"):
               p = Path(name)
               text = p.read_text(encoding="utf-8")
               new = text.replace("age<900", "age<300")
               if name == "index.html":
                   new = new.replace("ZIR-8", "ST106")
+              if name == "st107.html":
+                  new = new.replace("status.updated_ms", "status.station_time_ms")
               if new != text:
                   p.write_text(new, encoding="utf-8")
                   print(f"Updated {name}")
               else:
                   print(f"No change needed in {name}")
+
+          p = Path("telegram_watchdog.py")
+          text = p.read_text(encoding="utf-8")
+          new = text.replace(
+              'updated_ms = status.get("updated_ms")',
+              'updated_ms = status.get("station_time_ms") if key == "st107" else status.get("updated_ms")',
+          )
+          if new != text:
+              p.write_text(new, encoding="utf-8")
+              print("Updated telegram_watchdog.py for ST107 freshness")
+          else:
+              print("No watchdog freshness change needed")
           PY
 
       - name: Check stations and send Telegram alerts
@@ -53,11 +68,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .watchdog_state.json index.html st107.html mag.html 2>/dev/null || true
+          git add .watchdog_state.json index.html st107.html mag.html telegram_watchdog.py 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "Nothing to persist"
             exit 0
           fi
-          git commit -m "Update station watchdog state and website labels"
+          git commit -m "Use real ST107 data freshness"
           git pull --rebase origin main
           git push origin HEAD:main
