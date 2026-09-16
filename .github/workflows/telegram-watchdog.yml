@@ -1,4 +1,4 @@
-# ST107 freshness is based on the newest real data packet, not logger heartbeat
+# Verification trigger: ST107 freshness uses newest real data packet
 name: Telegram station watchdog
 
 on:
