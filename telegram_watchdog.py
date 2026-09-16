@@ -88,7 +88,7 @@ def main():
     for key, (label, path) in STATIONS.items():
         try:
             status = get_json(DB + path) or {}
-            updated_ms = status.get("updated_ms")
+            updated_ms = status.get("station_time_ms") if key == "st107" else status.get("updated_ms")
             age_ms = now_ms - int(updated_ms) if updated_ms is not None else None
             online = age_ms is not None and age_ms < OFFLINE_AFTER_MS
             new_state = "online" if online else "offline"

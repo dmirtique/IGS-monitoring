@@ -188,8 +188,8 @@ function render(){
     ].join('')
   }
 
-  const age=Number.isFinite(Number(status.updated_ms))
-    ?(Date.now()-Number(status.updated_ms))/1000:null;
+  const age=Number.isFinite(Number(status.station_time_ms))
+    ?(Date.now()-Number(status.station_time_ms))/1000:null;
   const hasStatus=age!==null;
   const online=hasStatus&&age<300;
   document.getElementById('dot').classList.toggle('ok',online);
