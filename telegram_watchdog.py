@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 DB = "https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app"
 CHAT_ID = "-1004425577425"
-OFFLINE_AFTER_MS = 15 * 60 * 1000
+OFFLINE_AFTER_MS = 5 * 60 * 1000
 STATE_FILE = ".watchdog_state.json"
 KYIV_TZ = ZoneInfo("Europe/Kyiv")
 
@@ -82,7 +82,7 @@ def main():
     if not previous:
         send_telegram(
             token,
-            "✅ IGS watchdog активовано\nПеревірка ST106, ST107 і MAG кожні 5 хв. Офлайн — після 15 хв без нових даних.",
+            "✅ IGS watchdog активовано\nПеревірка ST106, ST107 і MAG кожні 5 хв. Офлайн — після 5 хв без нових даних.",
         )
 
     for key, (label, path) in STATIONS.items():
