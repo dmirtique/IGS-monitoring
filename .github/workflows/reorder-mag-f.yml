@@ -1,0 +1,40 @@
+name: Reorder MAG F chart
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/reorder-mag-f.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  reorder:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move F chart to the end
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('mag.html')
+          s = p.read_text(encoding='utf-8')
+          old = 'const DISPLAY_CHANNELS=["MGX","MGY","MGZ","F","LSU","LSV","LSW","TPR","PRS"];'
+          new = 'const DISPLAY_CHANNELS=["MGX","MGY","MGZ","LSU","LSV","LSW","TPR","PRS","F"];'
+          if old not in s:
+              raise SystemExit('Expected DISPLAY_CHANNELS order not found')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Commit change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mag.html
+          git commit -m "Move MAG F chart to end"
+          git pull --rebase origin main
+          git push origin HEAD:main
