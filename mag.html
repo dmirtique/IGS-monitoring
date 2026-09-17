@@ -8,6 +8,7 @@
 <style>
 :root{color-scheme:dark;--bg:#08111f;--panel:#101b2e;--panel2:#0c1728;--text:#edf4ff;--muted:#94a7c5;--border:#263a5c;--ok:#3ddc97;--bad:#ff6b78}
 *{box-sizing:border-box}
+html,body{max-width:100%;overflow-x:hidden}
 body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
 .wrap{width:min(1540px,calc(100% - 28px));margin:auto;padding:18px 0 34px}
 .top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px;margin-bottom:14px}
@@ -24,18 +25,41 @@ h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}
 .label{color:var(--muted);font-size:12px;margin-bottom:4px}
 .value{font-size:15px;font-weight:650}
 .stack{display:grid;gap:14px}
-.card{padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--panel)}
-.head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin-bottom:10px}
-.title h2{margin:0 0 4px;font-size:18px}
-.unit{color:var(--muted);font-size:13px}
-.stats{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px;flex:1 1 900px}
+.card{padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--panel);min-width:0}
+.head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin-bottom:10px;min-width:0}
+.title{min-width:0}.title h2{margin:0 0 4px;font-size:18px}
+.unit{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;flex:1 1 900px;min-width:0}
 .stat{padding:8px 10px;border:1px solid rgba(118,149,192,.22);border-radius:9px;background:var(--panel2);min-width:0}
 .stat-label{color:var(--muted);font-size:11px;margin-bottom:3px}
 .stat-value{font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.chart-box{height:300px}
+.chart-box{height:300px;min-width:0}
 .footer{margin-top:13px;color:var(--muted);font-size:12px;text-align:center;line-height:1.45}
-@media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:650px){.summary{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.chart-box{height:250px}}
+
+/* На сайті WordPress магнітометр вставляється в iframe з фіксованою висотою.
+   У режимі embed робимо картки компактнішими, щоб усі 9 каналів поміщались
+   без обрізання, при цьому окрема сторінка MAG лишається повнорозмірною. */
+body.embedded .wrap{width:100%;padding:8px 10px 14px}
+body.embedded .top{gap:8px;margin-bottom:8px}
+body.embedded h1{font-size:22px}
+body.embedded .meta{font-size:12px}
+body.embedded .badge,body.embedded .control{min-height:32px;padding:5px 8px;font-size:12px}
+body.embedded .summary{gap:6px;margin-bottom:8px}
+body.embedded .summary-item{padding:7px 9px}
+body.embedded .stack{gap:8px}
+body.embedded .card{padding:9px;border-radius:11px}
+body.embedded .head{gap:7px;margin-bottom:6px}
+body.embedded .title h2{font-size:16px}
+body.embedded .unit{font-size:11px}
+body.embedded .stats{gap:5px}
+body.embedded .stat{padding:5px 7px}
+body.embedded .stat-label{font-size:10px}
+body.embedded .stat-value{font-size:12px}
+body.embedded .chart-box{height:220px}
+body.embedded .footer{margin-top:8px;font-size:10px}
+
+@media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:650px){.summary{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.chart-box{height:250px}body.embedded .chart-box{height:205px}}
 </style>
 </head>
 <body>
@@ -69,15 +93,14 @@ h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}
 </div>
 
 <script>
+try{if(window.self!==window.top)document.body.classList.add("embedded")}catch(_){document.body.classList.add("embedded")}
+
 const DB="https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app";
 const ROOT="/public/mag";
 const RAW_CHANNELS=["MGX","MGY","MGZ","LSU","LSV","LSW","TPR","PRS"];
 const DISPLAY_CHANNELS=["MGX","MGY","MGZ","F","LSU","LSV","LSW","TPR","PRS"];
 const MAG_CHANNELS=new Set(["MGX","MGY","MGZ"]);
 
-// Legacy fallback only: old live records contain raw counts.
-// New records from mag_logger.py are marked format="physical_v1" and already
-// contain physical values, so they are NOT calibrated again in the browser.
 const MAG_NT_PER_COUNT=13.7065;
 const INFO={
   MGX:{unit:"nT",desc:"Магнітне поле · вісь X датчика",digits:2},
@@ -161,219 +184,28 @@ for(const n of DISPLAY_CHANNELS){
       plugins:{
         legend:{display:false},
         decimation:{enabled:true,algorithm:"min-max",threshold:2000},
-        tooltip:{
-          displayColors:false,
-          callbacks:{
-            title:x=>x.length?timeText(x[0].parsed.x,true):"",
-            label:c=>`${n}: ${detail(n,c.parsed.y)}`
-          }
-        }
+        tooltip:{displayColors:false,callbacks:{title:x=>x.length?timeText(x[0].parsed.x,true):"",label:c=>`${n}: ${detail(n,c.parsed.y)}`}}
       },
       scales:{
-        x:{
-          type:"linear",
-          ticks:{maxTicksLimit:9,color:"#94a7c5",callback:v=>timeText(Number(v))},
-          grid:{color:"rgba(147,169,204,.14)"},
-          title:{display:true,text:"Час пристрою",color:"#94a7c5"}
-        },
-        y:{
-          grace:"8%",
-          ticks:{color:"#94a7c5",callback:v=>axisText(n,Number(v))},
-          grid:{color:"rgba(147,169,204,.14)"},
-          title:{display:true,text:INFO[n].unit,color:"#94a7c5"}
-        }
+        x:{type:"linear",ticks:{maxTicksLimit:9,color:"#94a7c5",callback:v=>timeText(Number(v))},grid:{color:"rgba(147,169,204,.14)"},title:{display:true,text:"Час пристрою",color:"#94a7c5"}},
+        y:{grace:"8%",ticks:{color:"#94a7c5",callback:v=>axisText(n,Number(v))},grid:{color:"rgba(147,169,204,.14)"},title:{display:true,text:INFO[n].unit,color:"#94a7c5"}}
       }
     }
   });
 }
 
-function validRecord(r){
-  return r&&typeof r==="object"&&Number.isFinite(Number(r.t))&&
-    RAW_CHANNELS.every(n=>Array.isArray(r[n]));
-}
-function applyPointEvent(ev){
-  const p=JSON.parse(ev.data),path=p.path,data=p.data;
-  if(path==="/"){
-    pointsBySlot.clear();
-    if(data)for(const [k,v] of Object.entries(data))if(validRecord(v))pointsBySlot.set(k,v);
-  }else{
-    const k=path.replace(/^\//,"");
-    if(data===null)pointsBySlot.delete(k);
-    else if(validRecord(data))pointsBySlot.set(k,data);
-  }
-  dirty=true;
-}
-function applyPointPatch(ev){
-  const p=JSON.parse(ev.data);
-  if(p.path==="/"){
-    for(const [k,v] of Object.entries(p.data||{})){
-      if(v===null)pointsBySlot.delete(k);
-      else if(validRecord(v))pointsBySlot.set(k,v);
-    }
-  }else{
-    const k=p.path.replace(/^\//,"");
-    if(p.data===null)pointsBySlot.delete(k);
-    else if(validRecord(p.data))pointsBySlot.set(k,p.data);
-  }
-  dirty=true;
-}
-function applyStatus(ev){
-  const p=JSON.parse(ev.data);
-  if(p.path==="/")status=p.data||{};
-  else status[p.path.replace(/^\//,"")]=p.data;
-  dirty=true;
-}
-function closeStreams(){
-  if(pointSource){pointSource.close();pointSource=null}
-  if(statusSource){statusSource.close();statusSource=null}
-}
-function connect(){
-  if(paused||document.hidden)return;
-  closeStreams();
-  pointSource=new EventSource(DB+ROOT+"/points.json");
-  pointSource.addEventListener("put",applyPointEvent);
-  pointSource.addEventListener("patch",applyPointPatch);
-  pointSource.onerror=()=>{document.getElementById("meta").textContent="Повторне підключення до Firebase…"};
-  statusSource=new EventSource(DB+ROOT+"/status.json");
-  statusSource.addEventListener("put",applyStatus);
-  statusSource.addEventListener("patch",applyStatus);
-}
+function validRecord(r){return r&&typeof r==="object"&&Number.isFinite(Number(r.t))&&RAW_CHANNELS.every(n=>Array.isArray(r[n]))}
+function applyPointEvent(ev){const p=JSON.parse(ev.data),path=p.path,data=p.data;if(path==="/"){pointsBySlot.clear();if(data)for(const[k,v]of Object.entries(data))if(validRecord(v))pointsBySlot.set(k,v)}else{const k=path.replace(/^\//,"");if(data===null)pointsBySlot.delete(k);else if(validRecord(data))pointsBySlot.set(k,data)}dirty=true}
+function applyPointPatch(ev){const p=JSON.parse(ev.data);if(p.path==="/"){for(const[k,v]of Object.entries(p.data||{})){if(v===null)pointsBySlot.delete(k);else if(validRecord(v))pointsBySlot.set(k,v)}}else{const k=p.path.replace(/^\//,"");if(p.data===null)pointsBySlot.delete(k);else if(validRecord(p.data))pointsBySlot.set(k,p.data)}dirty=true}
+function applyStatus(ev){const p=JSON.parse(ev.data);if(p.path==="/")status=p.data||{};else status[p.path.replace(/^\//,"")]=p.data;dirty=true}
+function closeStreams(){if(pointSource){pointSource.close();pointSource=null}if(statusSource){statusSource.close();statusSource=null}}
+function connect(){if(paused||document.hidden)return;closeStreams();pointSource=new EventSource(DB+ROOT+"/points.json");pointSource.addEventListener("put",applyPointEvent);pointSource.addEventListener("patch",applyPointPatch);pointSource.onerror=()=>{document.getElementById("meta").textContent="Повторне підключення до Firebase…"};statusSource=new EventSource(DB+ROOT+"/status.json");statusSource.addEventListener("put",applyStatus);statusSource.addEventListener("patch",applyStatus)}
 
-function physicalSignal(n,visible,cut){
-  const out=[];
-  for(const r of visible){
-    const dt=Number(r.dt_ms)||31.25;
-    const arr=r[n];
-    for(let i=0;i<arr.length;i++){
-      const x=Number(r.t)+i*dt;
-      const y=physicalValue(n,r,arr[i]);
-      if(!Number.isFinite(x)||!Number.isFinite(y)||x<cut)continue;
-      out.push({x,y});
-    }
-  }
-  return out;
-}
-
-function magneticSignals(visible,cut){
-  const bins=new Map();
-
-  for(const r of visible){
-    const dt=Number(r.dt_ms)||31.25;
-    const ax=r.MGX,ay=r.MGY,az=r.MGZ;
-    const len=Math.min(ax.length,ay.length,az.length);
-
-    for(let i=0;i<len;i++){
-      const x=Number(r.t)+i*dt;
-      const bx=physicalValue("MGX",r,ax[i]);
-      const by=physicalValue("MGY",r,ay[i]);
-      const bz=physicalValue("MGZ",r,az[i]);
-      if(!Number.isFinite(x)||x<cut||!Number.isFinite(bx)||!Number.isFinite(by)||!Number.isFinite(bz))continue;
-
-      const key=Math.floor(x/1000)*1000;
-      let b=bins.get(key);
-      if(!b){b={sx:0,sy:0,sz:0,count:0};bins.set(key,b)}
-      b.sx+=bx;
-      b.sy+=by;
-      b.sz+=bz;
-      b.count++;
-    }
-  }
-
-  const out={MGX:[],MGY:[],MGZ:[],F:[]};
-  for(const [x,b] of [...bins.entries()].sort((a,b)=>a[0]-b[0])){
-    if(!b.count)continue;
-    const bx=b.sx/b.count,by=b.sy/b.count,bz=b.sz/b.count;
-    const t=x+500;
-
-    out.MGX.push({x:t,y:bx});
-    out.MGY.push({x:t,y:by});
-    out.MGZ.push({x:t,y:bz});
-    out.F.push({x:t,y:Math.sqrt(bx*bx+by*by+bz*bz)/1000});
-  }
-  return out;
-}
-
-function render(){
-  if(!dirty)return;
-  dirty=false;
-
-  const records=[...pointsBySlot.values()]
-    .filter(validRecord)
-    .sort((a,b)=>Number(a.t)-Number(b.t));
-
-  const newest=records.length
-    ?Number(records.at(-1).t)+(Number(records.at(-1).dt_ms)||31.25)*records.at(-1).MGX.length
-    :Date.now();
-  const win=Number(document.getElementById("window").value);
-  const cut=newest-win*1000;
-
-  const visible=records.filter(r=>{
-    const duration=(Number(r.dt_ms)||31.25)*r.MGX.length;
-    return Number(r.t)+duration>=cut;
-  });
-
-  const magSignals=magneticSignals(visible,cut);
-
-  for(const n of DISPLAY_CHANNELS){
-    const signal=(MAG_CHANNELS.has(n)||n==="F")?magSignals[n]:physicalSignal(n,visible,cut);
-    let min=Infinity,max=-Infinity,peak=null,latest=NaN,sumSq=0,count=0;
-
-    for(const p of signal){
-      const y=Number(p.y),x=Number(p.x);
-      if(!Number.isFinite(y)||!Number.isFinite(x))continue;
-      if(y<min)min=y;
-      if(y>max)max=y;
-      if(!peak||Math.abs(y)>Math.abs(peak.y))peak={x,y};
-      latest=y;
-      sumSq+=y*y;
-      count++;
-    }
-
-    charts[n].data.datasets[0].data=signal;
-    charts[n].options.scales.x.min=cut;
-    charts[n].options.scales.x.max=newest;
-    charts[n].update("none");
-
-    const rms=count?Math.sqrt(sumSq/count):NaN;
-    document.getElementById("stats-"+n).innerHTML=[
-      statBox("Поточне",detail(n,latest)),
-      statBox("Макс. |значення|",peak?detail(n,Math.abs(peak.y)):"—",peak?timeText(peak.x,true):""),
-      statBox("RMS",detail(n,rms)),
-      statBox("Мінімум",Number.isFinite(min)?detail(n,min):"—"),
-      statBox("Максимум",Number.isFinite(max)?detail(n,max):"—"),
-      statBox("Точок",String(count))
-    ].join("");
-  }
-
-  const age=Number.isFinite(Number(status.updated_ms))
-    ?(Date.now()-Number(status.updated_ms))/1000:null;
-  const hasStatus=age!==null;
-  const online=hasStatus&&age<300;
-  document.getElementById("dot").classList.toggle("ok",online);
-  document.getElementById("dot").classList.toggle("bad",hasStatus&&!online);
-  document.getElementById("statusText").textContent=!hasStatus?"Очікування даних…":(online?"Магнітометр онлайн":"Магнітометр офлайн");
-
-  const fmt=status.data_format==="physical_v1"?"калібрування на ноутбуці":"legacy raw → калібрування на сайті";
-  document.getElementById("meta").textContent=
-    `192.168.7.108:16031 · Firebase live · 8 каналів + F · ${fmt} · показано ${win} с`;
-  document.getElementById("stationTime").textContent=Number.isFinite(Number(status.laptop_time_ms))
-    ?new Date(Number(status.laptop_time_ms)).toLocaleString("uk-UA"):"—";
-  document.getElementById("sampleRate").textContent=status.sample_rate_hz
-    ?`${Number(status.sample_rate_hz).toLocaleString("uk-UA")} Гц`:"—";
-  document.getElementById("age").textContent=age===null?"—":`${Math.max(0,age).toFixed(1)} с тому`;
-}
-
-document.getElementById("window").addEventListener("change",()=>{dirty=true});
-document.getElementById("pause").addEventListener("change",e=>{
-  paused=e.target.checked;
-  if(paused)closeStreams(); else connect();
-});
-document.addEventListener("visibilitychange",()=>{
-  if(document.hidden)closeStreams(); else connect();
-});
-setInterval(render,100);
-setInterval(()=>{dirty=true},1000);
-connect();
+function physicalSignal(n,visible,cut){const out=[];for(const r of visible){const dt=Number(r.dt_ms)||31.25,arr=r[n];for(let i=0;i<arr.length;i++){const x=Number(r.t)+i*dt,y=physicalValue(n,r,arr[i]);if(Number.isFinite(x)&&Number.isFinite(y)&&x>=cut)out.push({x,y})}}return out}
+function magneticSignals(visible,cut){const bins=new Map();for(const r of visible){const dt=Number(r.dt_ms)||31.25,ax=r.MGX,ay=r.MGY,az=r.MGZ,len=Math.min(ax.length,ay.length,az.length);for(let i=0;i<len;i++){const x=Number(r.t)+i*dt,bx=physicalValue("MGX",r,ax[i]),by=physicalValue("MGY",r,ay[i]),bz=physicalValue("MGZ",r,az[i]);if(!Number.isFinite(x)||x<cut||!Number.isFinite(bx)||!Number.isFinite(by)||!Number.isFinite(bz))continue;const key=Math.floor(x/1000)*1000;let b=bins.get(key);if(!b){b={sx:0,sy:0,sz:0,count:0};bins.set(key,b)}b.sx+=bx;b.sy+=by;b.sz+=bz;b.count++}}const out={MGX:[],MGY:[],MGZ:[],F:[]};for(const[x,b]of[...bins.entries()].sort((a,b)=>a[0]-b[0])){if(!b.count)continue;const bx=b.sx/b.count,by=b.sy/b.count,bz=b.sz/b.count;out.MGX.push({x,y:bx});out.MGY.push({x,y:by});out.MGZ.push({x,y:bz});out.F.push({x,y:Math.sqrt(bx*bx+by*by+bz*bz)/1000})}return out}
+function renderStats(n,data){let min=Infinity,max=-Infinity,sum2=0;for(const p of data){min=Math.min(min,p.y);max=Math.max(max,p.y);sum2+=p.y*p.y}const latest=data.length?data[data.length-1].y:NaN,rms=data.length?Math.sqrt(sum2/data.length):NaN,peak=Number.isFinite(min)&&Number.isFinite(max)?Math.max(Math.abs(min),Math.abs(max)):NaN;document.getElementById("stats-"+n).innerHTML=[statBox("Поточне",detail(n,latest)),statBox("Макс. |значення|",detail(n,peak)),statBox("RMS",detail(n,rms)),statBox("Мінімум",detail(n,min)),statBox("Максимум",detail(n,max)),statBox("Точок",String(data.length))].join("")}
+function render(){if(!dirty)return;dirty=false;const records=[...pointsBySlot.values()].filter(validRecord).sort((a,b)=>Number(a.t)-Number(b.t));const newest=records.length?Math.max(...records.map(r=>Number(r.t)+(Number(r.dt_ms)||31.25)*Math.max(0,r.MGX.length-1))):Date.now();const win=Number(document.getElementById("window").value),cut=newest-win*1000,visible=records.filter(r=>Number(r.t)+(Number(r.dt_ms)||31.25)*Math.max(0,r.MGX.length-1)>=cut);const mag=magneticSignals(visible,cut);for(const n of DISPLAY_CHANNELS){const data=n==="F"?mag.F:(MAG_CHANNELS.has(n)?mag[n]:physicalSignal(n,visible,cut));charts[n].data.datasets[0].data=data;charts[n].options.scales.x.min=cut;charts[n].options.scales.x.max=newest+250;charts[n].update("none");renderStats(n,data)}const updated=Number(status.updated_ms),age=Number.isFinite(updated)?(Date.now()-updated)/1000:null,has=age!==null,online=has&&age<300;document.getElementById("dot").classList.toggle("ok",online);document.getElementById("dot").classList.toggle("bad",has&&!online);document.getElementById("statusText").textContent=!has?"Очікування даних…":(online?"Магнітометр онлайн":"Магнітометр офлайн");document.getElementById("meta").textContent=`192.168.7.108:16031 · Firebase live · 8 каналів · ${status.data_format==="physical_v1"?"калібровані на ноутбуці":"legacy raw"} · показано ${win} с`;document.getElementById("stationTime").textContent=Number.isFinite(Number(status.laptop_time_ms))?new Date(Number(status.laptop_time_ms)).toLocaleString("uk-UA"):"—";document.getElementById("sampleRate").textContent=status.sample_rate_hz?`${Number(status.sample_rate_hz).toLocaleString("uk-UA")} Гц`:"—";document.getElementById("age").textContent=age===null?"—":`${Math.max(0,age).toFixed(1)} с тому`}
+document.getElementById("window").addEventListener("change",()=>{dirty=true});document.getElementById("pause").addEventListener("change",e=>{paused=e.target.checked;if(paused)closeStreams();else connect()});document.addEventListener("visibilitychange",()=>{if(document.hidden)closeStreams();else if(!paused)connect()});setInterval(()=>{dirty=true;render()},250);connect();
 </script>
 </body>
 </html>
