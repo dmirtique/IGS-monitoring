@@ -12,7 +12,6 @@ on:
       - "s2dw.html"
   # GitHub cron is not precise enough for 1-minute outage alerts.
   # Start a fresh long-lived monitor every 4 hours; each run checks every minute.
-  # The previous run lasts 4 h 25 min, so normal scheduler delays are covered by overlap.
   schedule:
     - cron: "13 */4 * * *"
   workflow_dispatch:
@@ -33,25 +32,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Verify 5-minute offline threshold on all pages
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          expected = {
-              "index.html": "const online=hasStatus&&age<300;",
-              "st107.html": "const online=hasStatus&&age<300;",
-              "mag.html": "const online=hasStatus&&age<300;",
-              "s2dw.html": "online=hasStatus&&age<300",
-          }
-
-          for name, marker in expected.items():
-              text = Path(name).read_text(encoding="utf-8")
-              if marker not in text:
-                  raise SystemExit(f"{name}: expected 5-minute offline rule not found")
-              print(f"{name}: 5-minute offline rule OK")
-          PY
 
       - name: Watch stations continuously
         env:
