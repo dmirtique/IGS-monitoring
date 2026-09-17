@@ -57,6 +57,11 @@ body.embedded .stat-label{font-size:10px}
 body.embedded .stat-value{font-size:12px}
 body.embedded .chart-box{height:220px}
 body.embedded .footer{margin-top:8px;font-size:10px}
+/* Fill the fixed WordPress iframe height without leaving a dark empty band below. */
+body.embedded .wrap{min-height:100vh;display:flex;flex-direction:column}
+body.embedded .stack{flex:1;grid-auto-rows:minmax(0,1fr)}
+body.embedded .card{display:flex;flex-direction:column}
+body.embedded .chart-box{height:auto;min-height:220px;flex:1}
 
 @media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:650px){.summary{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.chart-box{height:250px}body.embedded .chart-box{height:205px}}
@@ -98,7 +103,7 @@ try{if(window.self!==window.top)document.body.classList.add("embedded")}catch(_)
 const DB="https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app";
 const ROOT="/public/mag";
 const RAW_CHANNELS=["MGX","MGY","MGZ","LSU","LSV","LSW","TPR","PRS"];
-const DISPLAY_CHANNELS=["MGX","MGY","MGZ","LSU","LSV","LSW","TPR","PRS","F"];
+const DISPLAY_CHANNELS=["MGX","MGY","MGZ","F","LSU","LSV","LSW","TPR","PRS"];
 const MAG_CHANNELS=new Set(["MGX","MGY","MGZ"]);
 
 const MAG_NT_PER_COUNT=13.7065;
