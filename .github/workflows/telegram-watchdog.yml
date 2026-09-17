@@ -9,6 +9,7 @@ on:
       - "index.html"
       - "st107.html"
       - "mag.html"
+      - "s2dw.html"
   # GitHub allows a minimum 5-minute interval per cron expression.
   # Five offset 5-minute schedules give one watchdog launch each minute.
   schedule:
@@ -45,6 +46,7 @@ jobs:
               "index.html": "const online=hasStatus&&age<300;",
               "st107.html": "const online=hasStatus&&age<300;",
               "mag.html": "const online=hasStatus&&age<300;",
+              "s2dw.html": "online=hasStatus&&age<300;",
           }
 
           for name, marker in expected.items():
