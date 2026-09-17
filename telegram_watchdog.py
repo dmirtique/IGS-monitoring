@@ -31,11 +31,16 @@ STATIONS = {
         "path": "/public/mag/status.json",
         "timestamp_field": "updated_ms",
     },
+    "s2dw": {
+        "label": "S2DW",
+        "path": "/public/s2dw/status.json",
+        "timestamp_field": "station_time_ms",
+    },
 }
 
 
 def get_json(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "IGS-monitoring-watchdog/1.2"})
+    req = urllib.request.Request(url, headers={"User-Agent": "IGS-monitoring-watchdog/1.3"})
     with urllib.request.urlopen(req, timeout=20) as r:
         return json.loads(r.read().decode("utf-8"))
 
@@ -108,7 +113,7 @@ def main():
         send_telegram(
             token,
             "✅ IGS watchdog активовано\n"
-            "ST106, ST107 і MAG перевіряються щохвилини. "
+            "ST106, ST107, MAG і S2DW перевіряються щохвилини. "
             "Станція вважається офлайн після 5 хв без нових даних.",
         )
 
