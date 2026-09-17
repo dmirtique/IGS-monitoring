@@ -33,7 +33,7 @@ h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}
 .stat-label{color:var(--muted);font-size:11px;margin-bottom:3px}
 .stat-value{font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chart-box{height:300px}
-.footer{margin-top:13px;color:var(--muted);font-size:12px;text-align:center}
+.footer{margin-top:13px;color:var(--muted);font-size:12px;text-align:center;line-height:1.45}
 @media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:650px){.summary{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.chart-box{height:250px}}
 </style>
@@ -65,22 +65,55 @@ h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}
   </section>
 
   <main class="stack" id="stack"></main>
-  <div class="footer">Усі 8 каналів показані у raw counts. Візуальне заповнення пропусків вимкнено — графік показує лише реально отримані дані.</div>
+  <div class="footer">На сторінці показані фізичні величини: MGX/MGY/MGZ — nT (1-с усереднення), LSU/LSV/LSW — µm, TPR — °C, PRS — hPa. У Firebase залишаються незмінені raw counts.</div>
 </div>
 
 <script>
 const DB="https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app";
 const ROOT="/public/mag";
 const CHANNELS=["MGX","MGY","MGZ","LSU","LSV","LSW","TPR","PRS"];
+const MAG_CHANNELS=new Set(["MGX","MGY","MGZ"]);
+
+// Display-side calibration only. The laptop logger and Firebase raw data are untouched.
+const MAG_NT_PER_COUNT=13.7065;
+const INFO={
+  MGX:{unit:"nT",desc:"Магнітне поле · вісь X датчика",digits:2},
+  MGY:{unit:"nT",desc:"Магнітне поле · вісь Y датчика",digits:2},
+  MGZ:{unit:"nT",desc:"Магнітне поле · вісь Z датчика",digits:2},
+  LSU:{unit:"µm",desc:"Лазерний канал U",digits:4},
+  LSV:{unit:"µm",desc:"Лазерний канал V",digits:4},
+  LSW:{unit:"µm",desc:"Лазерний канал W",digits:4},
+  TPR:{unit:"°C",desc:"Температура",digits:2},
+  PRS:{unit:"hPa",desc:"Атмосферний тиск",digits:2}
+};
+
 const pointsBySlot=new Map();
 let status={},pointSource=null,statusSource=null,dirty=true,paused=false;
 
-function sci(v){
+function calibrate(n,raw){
+  const v=Number(raw);
+  if(!Number.isFinite(v))return NaN;
+  if(MAG_CHANNELS.has(n))return v*MAG_NT_PER_COUNT;
+  if(n==="LSU")return -1.642418e-5*v+8.802597;
+  if(n==="LSV")return -1.61601e-5*v-1.36095;
+  if(n==="LSW")return -1.6510e-5*v-6.0113;
+  if(n==="TPR")return 0.00753296*v+14627.07345;
+  if(n==="PRS")return 0.000410678*v+240.70595;
+  return v;
+}
+function numberText(n,v){
   if(!Number.isFinite(v))return "—";
-  if(v===0)return "0";
-  return Math.abs(v)>=1e-3&&Math.abs(v)<1e7
-    ?v.toLocaleString("uk-UA",{maximumSignificantDigits:8})
-    :v.toExponential(4);
+  const d=INFO[n]?.digits??3;
+  return v.toLocaleString("uk-UA",{minimumFractionDigits:d,maximumFractionDigits:d});
+}
+function detail(n,v){
+  if(!Number.isFinite(v))return "—";
+  return `${numberText(n,v)} ${INFO[n].unit}`;
+}
+function axisText(n,v){
+  if(!Number.isFinite(v))return "—";
+  const d=INFO[n]?.digits??3;
+  return Number(v).toLocaleString("uk-UA",{maximumFractionDigits:d});
 }
 function timeText(ms,full=false){
   if(!Number.isFinite(ms))return "—";
@@ -89,18 +122,16 @@ function timeText(ms,full=false){
     fractionalSecondDigits:full?3:undefined
   });
 }
-function detail(v){return `${sci(v)} counts`}
 function statBox(l,v,t=""){
   return `<div class="stat" title="${t||v}"><div class="stat-label">${l}</div><div class="stat-value">${v}</div></div>`;
 }
 
 const stack=document.getElementById("stack");
 for(const n of CHANNELS){
-  const kind=["MGX","MGY","MGZ"].includes(n)?"Магнітометричний канал":"Допоміжний канал";
   stack.insertAdjacentHTML("beforeend",
     `<section class="card">
       <div class="head">
-        <div class="title"><h2>${n}</h2><div class="unit">${kind} · raw counts</div></div>
+        <div class="title"><h2>${n}</h2><div class="unit">${INFO[n].desc} · ${INFO[n].unit}</div></div>
         <div class="stats" id="stats-${n}"></div>
       </div>
       <div class="chart-box"><canvas id="${n}"></canvas></div>
@@ -125,7 +156,7 @@ for(const n of CHANNELS){
           displayColors:false,
           callbacks:{
             title:x=>x.length?timeText(x[0].parsed.x,true):"",
-            label:c=>`${n}: ${detail(c.parsed.y)}`
+            label:c=>`${n}: ${detail(n,c.parsed.y)}`
           }
         }
       },
@@ -138,9 +169,9 @@ for(const n of CHANNELS){
         },
         y:{
           grace:"8%",
-          ticks:{color:"#94a7c5",callback:v=>sci(Number(v))},
+          ticks:{color:"#94a7c5",callback:v=>axisText(n,Number(v))},
           grid:{color:"rgba(147,169,204,.14)"},
-          title:{display:true,text:"counts",color:"#94a7c5"}
+          title:{display:true,text:INFO[n].unit,color:"#94a7c5"}
         }
       }
     }
@@ -199,6 +230,43 @@ function connect(){
   statusSource.addEventListener("patch",applyStatus);
 }
 
+function rawSamples(n,visible,cut){
+  const out=[];
+  for(const r of visible){
+    const dt=Number(r.dt_ms)||31.25;
+    const arr=r[n];
+    for(let i=0;i<arr.length;i++){
+      const raw=Number(arr[i]);
+      const x=Number(r.t)+i*dt;
+      if(!Number.isFinite(raw)||!Number.isFinite(x)||x<cut)continue;
+      out.push({x,raw});
+    }
+  }
+  return out;
+}
+
+function calibratedSignal(n,visible,cut){
+  const raw=rawSamples(n,visible,cut);
+
+  // The magnetic channels contain a strong ~14 Hz carrier. Average in 1-second
+  // bins before conversion so the page shows the slowly varying physical field.
+  if(MAG_CHANNELS.has(n)){
+    const bins=new Map();
+    for(const p of raw){
+      const key=Math.floor(p.x/1000)*1000;
+      let b=bins.get(key);
+      if(!b){b={sum:0,count:0};bins.set(key,b)}
+      b.sum+=p.raw;
+      b.count++;
+    }
+    return [...bins.entries()]
+      .sort((a,b)=>a[0]-b[0])
+      .map(([x,b])=>({x:x+500,y:calibrate(n,b.sum/b.count)}));
+  }
+
+  return raw.map(p=>({x:p.x,y:calibrate(n,p.raw)}));
+}
+
 function render(){
   if(!dirty)return;
   dirty=false;
@@ -219,24 +287,18 @@ function render(){
   });
 
   for(const n of CHANNELS){
-    const signal=[];
+    const signal=calibratedSignal(n,visible,cut);
     let min=Infinity,max=-Infinity,peak=null,latest=NaN,sumSq=0,count=0;
 
-    for(const r of visible){
-      const dt=Number(r.dt_ms)||31.25;
-      const arr=r[n];
-      for(let i=0;i<arr.length;i++){
-        const y=Number(arr[i]);
-        const x=Number(r.t)+i*dt;
-        if(!Number.isFinite(y)||!Number.isFinite(x)||x<cut)continue;
-        signal.push({x,y});
-        if(y<min)min=y;
-        if(y>max)max=y;
-        if(!peak||Math.abs(y)>Math.abs(peak.y))peak={x,y};
-        latest=y;
-        sumSq+=y*y;
-        count++;
-      }
+    for(const p of signal){
+      const y=Number(p.y),x=Number(p.x);
+      if(!Number.isFinite(y)||!Number.isFinite(x))continue;
+      if(y<min)min=y;
+      if(y>max)max=y;
+      if(!peak||Math.abs(y)>Math.abs(peak.y))peak={x,y};
+      latest=y;
+      sumSq+=y*y;
+      count++;
     }
 
     charts[n].data.datasets[0].data=signal;
@@ -246,11 +308,11 @@ function render(){
 
     const rms=count?Math.sqrt(sumSq/count):NaN;
     document.getElementById("stats-"+n).innerHTML=[
-      statBox("Поточне",detail(latest)),
-      statBox("Макс. |значення|",peak?detail(Math.abs(peak.y)):"—",peak?timeText(peak.x,true):""),
-      statBox("RMS",detail(rms)),
-      statBox("Мінімум",Number.isFinite(min)?detail(min):"—"),
-      statBox("Максимум",Number.isFinite(max)?detail(max):"—"),
+      statBox("Поточне",detail(n,latest)),
+      statBox("Макс. |значення|",peak?detail(n,Math.abs(peak.y)):"—",peak?timeText(peak.x,true):""),
+      statBox("RMS",detail(n,rms)),
+      statBox("Мінімум",Number.isFinite(min)?detail(n,min):"—"),
+      statBox("Максимум",Number.isFinite(max)?detail(n,max):"—"),
       statBox("Точок",String(count))
     ].join("");
   }
@@ -263,7 +325,7 @@ function render(){
   document.getElementById("dot").classList.toggle("bad",hasStatus&&!online);
   document.getElementById("statusText").textContent=!hasStatus?"Очікування даних…":(online?"Магнітометр онлайн":"Магнітометр офлайн");
   document.getElementById("meta").textContent=
-    `192.168.7.108:16031 · Firebase live · 8 каналів · показано ${win} с`;
+    `192.168.7.108:16031 · Firebase live · 8 каналів · фізичні одиниці · показано ${win} с`;
   document.getElementById("stationTime").textContent=Number.isFinite(Number(status.laptop_time_ms))
     ?new Date(Number(status.laptop_time_ms)).toLocaleString("uk-UA"):"—";
   document.getElementById("sampleRate").textContent=status.sample_rate_hz
