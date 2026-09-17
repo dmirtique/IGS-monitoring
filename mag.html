@@ -65,7 +65,7 @@ h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}
   </section>
 
   <main class="stack" id="stack"></main>
-  <div class="footer">На сторінці показані фізичні величини: MGX/MGY/MGZ — nT (1-с усереднення), F — µT, LSU/LSV/LSW — µm, TPR — °C, PRS — hPa. F є розрахунковою величиною |B|. У Firebase залишаються незмінені raw counts.</div>
+  <div class="footer">Новий MAG-логер рахує фізичні величини безпосередньо на ноутбуці й передає їх у Firebase. MGX/MGY/MGZ — nT (1-с усереднення на сторінці), F — µT, LSU/LSV/LSW — µm, TPR — °C, PRS — hPa. Старі raw-записи у live-буфері теж підтримуються автоматично.</div>
 </div>
 
 <script>
@@ -75,7 +75,9 @@ const RAW_CHANNELS=["MGX","MGY","MGZ","LSU","LSV","LSW","TPR","PRS"];
 const DISPLAY_CHANNELS=["MGX","MGY","MGZ","F","LSU","LSV","LSW","TPR","PRS"];
 const MAG_CHANNELS=new Set(["MGX","MGY","MGZ"]);
 
-// Display-side calibration only. The laptop logger and Firebase raw data are untouched.
+// Legacy fallback only: old live records contain raw counts.
+// New records from mag_logger.py are marked format="physical_v1" and already
+// contain physical values, so they are NOT calibrated again in the browser.
 const MAG_NT_PER_COUNT=13.7065;
 const INFO={
   MGX:{unit:"nT",desc:"Магнітне поле · вісь X датчика",digits:2},
@@ -92,7 +94,7 @@ const INFO={
 const pointsBySlot=new Map();
 let status={},pointSource=null,statusSource=null,dirty=true,paused=false;
 
-function calibrate(n,raw){
+function calibrateLegacy(n,raw){
   const v=Number(raw);
   if(!Number.isFinite(v))return NaN;
   if(MAG_CHANNELS.has(n))return v*MAG_NT_PER_COUNT;
@@ -102,6 +104,11 @@ function calibrate(n,raw){
   if(n==="TPR")return 0.00753296*v+14627.07345;
   if(n==="PRS")return 0.000410678*v+240.70595;
   return v;
+}
+function physicalValue(n,r,v){
+  const x=Number(v);
+  if(!Number.isFinite(x))return NaN;
+  return r?.format==="physical_v1"?x:calibrateLegacy(n,x);
 }
 function numberText(n,v){
   if(!Number.isFinite(v))return "—";
@@ -232,24 +239,19 @@ function connect(){
   statusSource.addEventListener("patch",applyStatus);
 }
 
-function rawSamples(n,visible,cut){
+function physicalSignal(n,visible,cut){
   const out=[];
   for(const r of visible){
     const dt=Number(r.dt_ms)||31.25;
     const arr=r[n];
     for(let i=0;i<arr.length;i++){
-      const raw=Number(arr[i]);
       const x=Number(r.t)+i*dt;
-      if(!Number.isFinite(raw)||!Number.isFinite(x)||x<cut)continue;
-      out.push({x,raw});
+      const y=physicalValue(n,r,arr[i]);
+      if(!Number.isFinite(x)||!Number.isFinite(y)||x<cut)continue;
+      out.push({x,y});
     }
   }
   return out;
-}
-
-function calibratedSignal(n,visible,cut){
-  const raw=rawSamples(n,visible,cut);
-  return raw.map(p=>({x:p.x,y:calibrate(n,p.raw)}));
 }
 
 function magneticSignals(visible,cut){
@@ -262,15 +264,17 @@ function magneticSignals(visible,cut){
 
     for(let i=0;i<len;i++){
       const x=Number(r.t)+i*dt;
-      const vx=Number(ax[i]),vy=Number(ay[i]),vz=Number(az[i]);
-      if(!Number.isFinite(x)||x<cut||!Number.isFinite(vx)||!Number.isFinite(vy)||!Number.isFinite(vz))continue;
+      const bx=physicalValue("MGX",r,ax[i]);
+      const by=physicalValue("MGY",r,ay[i]);
+      const bz=physicalValue("MGZ",r,az[i]);
+      if(!Number.isFinite(x)||x<cut||!Number.isFinite(bx)||!Number.isFinite(by)||!Number.isFinite(bz))continue;
 
       const key=Math.floor(x/1000)*1000;
       let b=bins.get(key);
       if(!b){b={sx:0,sy:0,sz:0,count:0};bins.set(key,b)}
-      b.sx+=vx;
-      b.sy+=vy;
-      b.sz+=vz;
+      b.sx+=bx;
+      b.sy+=by;
+      b.sz+=bz;
       b.count++;
     }
   }
@@ -278,10 +282,7 @@ function magneticSignals(visible,cut){
   const out={MGX:[],MGY:[],MGZ:[],F:[]};
   for(const [x,b] of [...bins.entries()].sort((a,b)=>a[0]-b[0])){
     if(!b.count)continue;
-    const rx=b.sx/b.count,ry=b.sy/b.count,rz=b.sz/b.count;
-    const bx=rx*MAG_NT_PER_COUNT;
-    const by=ry*MAG_NT_PER_COUNT;
-    const bz=rz*MAG_NT_PER_COUNT;
+    const bx=b.sx/b.count,by=b.sy/b.count,bz=b.sz/b.count;
     const t=x+500;
 
     out.MGX.push({x:t,y:bx});
@@ -314,7 +315,7 @@ function render(){
   const magSignals=magneticSignals(visible,cut);
 
   for(const n of DISPLAY_CHANNELS){
-    const signal=(MAG_CHANNELS.has(n)||n==="F")?magSignals[n]:calibratedSignal(n,visible,cut);
+    const signal=(MAG_CHANNELS.has(n)||n==="F")?magSignals[n]:physicalSignal(n,visible,cut);
     let min=Infinity,max=-Infinity,peak=null,latest=NaN,sumSq=0,count=0;
 
     for(const p of signal){
@@ -351,8 +352,10 @@ function render(){
   document.getElementById("dot").classList.toggle("ok",online);
   document.getElementById("dot").classList.toggle("bad",hasStatus&&!online);
   document.getElementById("statusText").textContent=!hasStatus?"Очікування даних…":(online?"Магнітометр онлайн":"Магнітометр офлайн");
+
+  const fmt=status.data_format==="physical_v1"?"калібрування на ноутбуці":"legacy raw → калібрування на сайті";
   document.getElementById("meta").textContent=
-    `192.168.7.108:16031 · Firebase live · 8 каналів + F · фізичні одиниці · показано ${win} с`;
+    `192.168.7.108:16031 · Firebase live · 8 каналів + F · ${fmt} · показано ${win} с`;
   document.getElementById("stationTime").textContent=Number.isFinite(Number(status.laptop_time_ms))
     ?new Date(Number(status.laptop_time_ms)).toLocaleString("uk-UA"):"—";
   document.getElementById("sampleRate").textContent=status.sample_rate_hz
