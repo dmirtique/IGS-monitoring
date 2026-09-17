@@ -10,27 +10,24 @@ on:
       - "st107.html"
       - "mag.html"
       - "s2dw.html"
-  # GitHub allows a minimum 5-minute interval per cron expression.
-  # Five offset 5-minute schedules give one watchdog launch each minute.
+  # GitHub cron is not precise enough for 1-minute outage alerts.
+  # Start a fresh long-lived monitor every 4 hours; each run checks every minute.
+  # The previous run lasts 4 h 25 min, so normal scheduler delays are covered by overlap.
   schedule:
-    - cron: "0-55/5 * * * *"
-    - cron: "1-56/5 * * * *"
-    - cron: "2-57/5 * * * *"
-    - cron: "3-58/5 * * * *"
-    - cron: "4-59/5 * * * *"
+    - cron: "13 */4 * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: telegram-station-watchdog
-  cancel-in-progress: false
+  group: telegram-station-watchdog-continuous
+  cancel-in-progress: true
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 270
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,7 +43,7 @@ jobs:
               "index.html": "const online=hasStatus&&age<300;",
               "st107.html": "const online=hasStatus&&age<300;",
               "mag.html": "const online=hasStatus&&age<300;",
-              "s2dw.html": "online=hasStatus&&age<300;",
+              "s2dw.html": "online=hasStatus&&age<300",
           }
 
           for name, marker in expected.items():
@@ -56,21 +53,31 @@ jobs:
               print(f"{name}: 5-minute offline rule OK")
           PY
 
-      - name: Check stations and send Telegram alerts
+      - name: Watch stations continuously
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        run: python3 telegram_watchdog.py
-
-      - name: Persist watchdog state
-        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .watchdog_state.json 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "Nothing to persist"
-            exit 0
-          fi
-          git commit -m "Update watchdog state"
-          git pull --rebase origin main
-          git push origin HEAD:main
+
+          end=$(( $(date +%s) + 15900 ))
+          pass=0
+
+          while [ "$(date +%s)" -lt "$end" ]; do
+            pass=$((pass + 1))
+            echo "Watchdog pass $pass at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+            # A temporary network/Telegram error must not kill the monitor.
+            python3 telegram_watchdog.py || echo "Watchdog pass failed; retrying in 60 s"
+
+            # Persist only real state transitions. This also makes the next runner
+            # inherit the correct online/offline state without duplicate alerts.
+            if ! git diff --quiet -- .watchdog_state.json; then
+              git add .watchdog_state.json
+              git commit -m "Update watchdog state"
+              git pull --rebase origin main
+              git push origin HEAD:main
+            fi
+
+            sleep 60
+          done
