@@ -65,13 +65,14 @@ h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}
   </section>
 
   <main class="stack" id="stack"></main>
-  <div class="footer">На сторінці показані фізичні величини: MGX/MGY/MGZ — nT (1-с усереднення), LSU/LSV/LSW — µm, TPR — °C, PRS — hPa. У Firebase залишаються незмінені raw counts.</div>
+  <div class="footer">На сторінці показані фізичні величини: MGX/MGY/MGZ — nT (1-с усереднення), F — µT, LSU/LSV/LSW — µm, TPR — °C, PRS — hPa. F є розрахунковою величиною |B|. У Firebase залишаються незмінені raw counts.</div>
 </div>
 
 <script>
 const DB="https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app";
 const ROOT="/public/mag";
-const CHANNELS=["MGX","MGY","MGZ","LSU","LSV","LSW","TPR","PRS"];
+const RAW_CHANNELS=["MGX","MGY","MGZ","LSU","LSV","LSW","TPR","PRS"];
+const DISPLAY_CHANNELS=["MGX","MGY","MGZ","F","LSU","LSV","LSW","TPR","PRS"];
 const MAG_CHANNELS=new Set(["MGX","MGY","MGZ"]);
 
 // Display-side calibration only. The laptop logger and Firebase raw data are untouched.
@@ -80,6 +81,7 @@ const INFO={
   MGX:{unit:"nT",desc:"Магнітне поле · вісь X датчика",digits:2},
   MGY:{unit:"nT",desc:"Магнітне поле · вісь Y датчика",digits:2},
   MGZ:{unit:"nT",desc:"Магнітне поле · вісь Z датчика",digits:2},
+  F:{unit:"µT",desc:"Повне магнітне поле |B|",digits:3},
   LSU:{unit:"µm",desc:"Лазерний канал U",digits:4},
   LSV:{unit:"µm",desc:"Лазерний канал V",digits:4},
   LSW:{unit:"µm",desc:"Лазерний канал W",digits:4},
@@ -127,7 +129,7 @@ function statBox(l,v,t=""){
 }
 
 const stack=document.getElementById("stack");
-for(const n of CHANNELS){
+for(const n of DISPLAY_CHANNELS){
   stack.insertAdjacentHTML("beforeend",
     `<section class="card">
       <div class="head">
@@ -139,7 +141,7 @@ for(const n of CHANNELS){
 }
 
 const charts={};
-for(const n of CHANNELS){
+for(const n of DISPLAY_CHANNELS){
   charts[n]=new Chart(document.getElementById(n),{
     type:"line",
     data:{datasets:[{
@@ -180,7 +182,7 @@ for(const n of CHANNELS){
 
 function validRecord(r){
   return r&&typeof r==="object"&&Number.isFinite(Number(r.t))&&
-    CHANNELS.every(n=>Array.isArray(r[n]));
+    RAW_CHANNELS.every(n=>Array.isArray(r[n]));
 }
 function applyPointEvent(ev){
   const p=JSON.parse(ev.data),path=p.path,data=p.data;
@@ -247,24 +249,47 @@ function rawSamples(n,visible,cut){
 
 function calibratedSignal(n,visible,cut){
   const raw=rawSamples(n,visible,cut);
+  return raw.map(p=>({x:p.x,y:calibrate(n,p.raw)}));
+}
 
-  // The magnetic channels contain a strong ~14 Hz carrier. Average in 1-second
-  // bins before conversion so the page shows the slowly varying physical field.
-  if(MAG_CHANNELS.has(n)){
-    const bins=new Map();
-    for(const p of raw){
-      const key=Math.floor(p.x/1000)*1000;
+function magneticSignals(visible,cut){
+  const bins=new Map();
+
+  for(const r of visible){
+    const dt=Number(r.dt_ms)||31.25;
+    const ax=r.MGX,ay=r.MGY,az=r.MGZ;
+    const len=Math.min(ax.length,ay.length,az.length);
+
+    for(let i=0;i<len;i++){
+      const x=Number(r.t)+i*dt;
+      const vx=Number(ax[i]),vy=Number(ay[i]),vz=Number(az[i]);
+      if(!Number.isFinite(x)||x<cut||!Number.isFinite(vx)||!Number.isFinite(vy)||!Number.isFinite(vz))continue;
+
+      const key=Math.floor(x/1000)*1000;
       let b=bins.get(key);
-      if(!b){b={sum:0,count:0};bins.set(key,b)}
-      b.sum+=p.raw;
+      if(!b){b={sx:0,sy:0,sz:0,count:0};bins.set(key,b)}
+      b.sx+=vx;
+      b.sy+=vy;
+      b.sz+=vz;
       b.count++;
     }
-    return [...bins.entries()]
-      .sort((a,b)=>a[0]-b[0])
-      .map(([x,b])=>({x:x+500,y:calibrate(n,b.sum/b.count)}));
   }
 
-  return raw.map(p=>({x:p.x,y:calibrate(n,p.raw)}));
+  const out={MGX:[],MGY:[],MGZ:[],F:[]};
+  for(const [x,b] of [...bins.entries()].sort((a,b)=>a[0]-b[0])){
+    if(!b.count)continue;
+    const rx=b.sx/b.count,ry=b.sy/b.count,rz=b.sz/b.count;
+    const bx=rx*MAG_NT_PER_COUNT;
+    const by=ry*MAG_NT_PER_COUNT;
+    const bz=rz*MAG_NT_PER_COUNT;
+    const t=x+500;
+
+    out.MGX.push({x:t,y:bx});
+    out.MGY.push({x:t,y:by});
+    out.MGZ.push({x:t,y:bz});
+    out.F.push({x:t,y:Math.sqrt(bx*bx+by*by+bz*bz)/1000});
+  }
+  return out;
 }
 
 function render(){
@@ -286,8 +311,10 @@ function render(){
     return Number(r.t)+duration>=cut;
   });
 
-  for(const n of CHANNELS){
-    const signal=calibratedSignal(n,visible,cut);
+  const magSignals=magneticSignals(visible,cut);
+
+  for(const n of DISPLAY_CHANNELS){
+    const signal=(MAG_CHANNELS.has(n)||n==="F")?magSignals[n]:calibratedSignal(n,visible,cut);
     let min=Infinity,max=-Infinity,peak=null,latest=NaN,sumSq=0,count=0;
 
     for(const p of signal){
@@ -325,7 +352,7 @@ function render(){
   document.getElementById("dot").classList.toggle("bad",hasStatus&&!online);
   document.getElementById("statusText").textContent=!hasStatus?"Очікування даних…":(online?"Магнітометр онлайн":"Магнітометр офлайн");
   document.getElementById("meta").textContent=
-    `192.168.7.108:16031 · Firebase live · 8 каналів · фізичні одиниці · показано ${win} с`;
+    `192.168.7.108:16031 · Firebase live · 8 каналів + F · фізичні одиниці · показано ${win} с`;
   document.getElementById("stationTime").textContent=Number.isFinite(Number(status.laptop_time_ms))
     ?new Date(Number(status.laptop_time_ms)).toLocaleString("uk-UA"):"—";
   document.getElementById("sampleRate").textContent=status.sample_rate_hz
