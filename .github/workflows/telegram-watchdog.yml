@@ -1,4 +1,3 @@
-# ST107 freshness uses the actual station timestamp, not the logger heartbeat
 name: Telegram station watchdog
 
 on:
@@ -7,6 +6,12 @@ on:
     paths:
       - ".github/workflows/telegram-watchdog.yml"
       - "telegram_watchdog.py"
+      - "index.html"
+      - "st107.html"
+      - "mag.html"
+  # GitHub Actions scheduled workflows have a practical 5-minute cadence.
+  # Each run stays alive for 4 minutes and performs five checks 60 s apart,
+  # giving us an effective one-minute station check cadence.
   schedule:
     - cron: "2-57/5 * * * *"
   workflow_dispatch:
@@ -21,47 +26,51 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 7
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Ensure website labels and offline threshold
+      - name: Verify 5-minute offline threshold on all pages
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          for name in ("index.html", "st107.html", "mag.html"):
-              p = Path(name)
-              text = p.read_text(encoding="utf-8")
-              new = text.replace("age<900", "age<300")
-              if name == "index.html":
-                  new = new.replace("ZIR-8", "ST106")
-              if name == "st107.html":
-                  new = new.replace(
-                      "  const latestDataMs=records.length?Number(records.at(-1)[0])+bucketMs:null;\n  const age=Number.isFinite(latestDataMs)?(Date.now()-latestDataMs)/1000:null;",
-                      "  const age=Number.isFinite(Number(status.station_time_ms))\n    ?(Date.now()-Number(status.station_time_ms))/1000:null;",
-                  )
-              if new != text:
-                  p.write_text(new, encoding="utf-8")
-                  print(f"Updated {name}")
-              else:
-                  print(f"No change needed in {name}")
+          expected = {
+              "index.html": "const online=hasStatus&&age<300;",
+              "st107.html": "const online=hasStatus&&age<300;",
+              "mag.html": "const online=hasStatus&&age<300;",
+          }
+
+          for name, marker in expected.items():
+              text = Path(name).read_text(encoding="utf-8")
+              if marker not in text:
+                  raise SystemExit(f"{name}: expected 5-minute offline rule not found")
+              print(f"{name}: 5-minute offline rule OK")
           PY
 
-      - name: Check stations and send Telegram alerts
+      - name: Check stations every minute and send Telegram alerts
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        run: python3 telegram_watchdog.py
+        run: |
+          had_error=0
+          for i in 1 2 3 4 5; do
+            echo "Watchdog pass $i/5 at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            python3 telegram_watchdog.py || had_error=1
+            if [ "$i" -lt 5 ]; then
+              sleep 60
+            fi
+          done
+          exit $had_error
 
-      - name: Persist watchdog state and website changes
+      - name: Persist watchdog state
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .watchdog_state.json index.html st107.html mag.html 2>/dev/null || true
+          git add .watchdog_state.json 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "Nothing to persist"
             exit 0
