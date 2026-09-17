@@ -1,0 +1,49 @@
+name: Fix MAG layout once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fix-mag-layout-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Match screenshot layout and fill iframe height
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('mag.html')
+          s = p.read_text(encoding='utf-8')
+
+          # Screenshot order: F remains fourth.
+          s = s.replace(
+              'const DISPLAY_CHANNELS=["MGX","MGY","MGZ","LSU","LSV","LSW","TPR","PRS","F"];',
+              'const DISPLAY_CHANNELS=["MGX","MGY","MGZ","F","LSU","LSV","LSW","TPR","PRS"];',
+              1,
+          )
+
+          marker = 'body.embedded .footer{margin-top:8px;font-size:10px}'
+          extra = '''body.embedded .footer{margin-top:8px;font-size:10px}\n/* Fill the fixed WordPress iframe height without leaving a dark empty band below. */\nbody.embedded .wrap{min-height:100vh;display:flex;flex-direction:column}\nbody.embedded .stack{flex:1;grid-auto-rows:minmax(0,1fr)}\nbody.embedded .card{display:flex;flex-direction:column}\nbody.embedded .chart-box{height:auto;min-height:220px;flex:1}'''
+          if marker in s and 'grid-auto-rows:minmax(0,1fr)' not in s:
+              s = s.replace(marker, extra, 1)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Commit MAG layout fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mag.html
+          git commit -m "Match MAG screenshot layout and remove bottom gap"
+          git pull --rebase origin main
+          git push origin HEAD:main
