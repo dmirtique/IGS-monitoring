@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/telegram-watchdog.yml"
+      - "telegram_watchdog.py"
   schedule:
     - cron: "2-57/5 * * * *"
   workflow_dispatch:
@@ -20,6 +21,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -64,6 +66,6 @@ jobs:
             echo "Nothing to persist"
             exit 0
           fi
-          git commit -m "Use ST107 station time for freshness"
+          git commit -m "Update watchdog state"
           git pull --rebase origin main
           git push origin HEAD:main
