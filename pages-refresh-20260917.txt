@@ -1,0 +1,2 @@
+Force GitHub Pages refresh after MAG UI reorder.
+2026-09-17
