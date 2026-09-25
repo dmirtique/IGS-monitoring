@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/telegram-watchdog.yml"
       - "telegram_watchdog.py"
+      - "firebase-watchdog/**"
   # Five independent 5-minute schedules, offset by one minute.
   # Together they give one watchdog check each minute without keeping
   # a long-running Actions job alive for hours.
