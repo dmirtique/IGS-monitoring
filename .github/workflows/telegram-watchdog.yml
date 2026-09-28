@@ -6,52 +6,80 @@ on:
     paths:
       - ".github/workflows/telegram-watchdog.yml"
       - "telegram_watchdog.py"
-      - "firebase-watchdog/**"
-  # Five independent 5-minute schedules, offset by one minute.
-  # Together they give one watchdog check each minute without keeping
-  # a long-running Actions job alive for hours.
+  # A long-lived runner checks every 60 seconds.
+  # A new run is started every 3 hours before the old one's 3h45 window ends.
   schedule:
-    - cron: "*/5 * * * *"
-    - cron: "1-59/5 * * * *"
-    - cron: "2-59/5 * * * *"
-    - cron: "3-59/5 * * * *"
-    - cron: "4-59/5 * * * *"
+    - cron: "17 */3 * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: telegram-station-watchdog
-  cancel-in-progress: false
+  group: telegram-station-watchdog-continuous
+  cancel-in-progress: true
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 240
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Check stations once
+      - name: Verify Telegram on watchdog deploy
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.parse, urllib.request
+          token = os.environ["TELEGRAM_BOT_TOKEN"].strip()
+          data = urllib.parse.urlencode({
+              "chat_id": "-1004425577425",
+              "text": "✅ IGS watchdog перезапущено. Перевірка ST106, ST107, MAG і S2DW — щохвилини; офлайн після 5 хв без даних."
+          }).encode()
+          req = urllib.request.Request(
+              f"https://api.telegram.org/bot{token}/sendMessage",
+              data=data,
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=20) as r:
+              payload = json.loads(r.read().decode())
+          if not payload.get("ok"):
+              raise SystemExit(payload)
+          print("Telegram heartbeat sent")
+          PY
+
+      - name: Watch stations every minute
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Start from the newest saved watchdog state.
-          git pull --rebase origin main
+          # Run for 3h45. The next scheduled run replaces this one before expiry.
+          end=$(( $(date +%s) + 13500 ))
+          pass=0
 
-          echo "Watchdog check at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          python3 telegram_watchdog.py
+          while [ "$(date +%s)" -lt "$end" ]; do
+            pass=$((pass+1))
+            echo "Watchdog pass $pass at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
-          # Persist only a real online/offline transition.
-          if ! git diff --quiet -- .watchdog_state.json; then
-            git add .watchdog_state.json
-            git commit -m "Update watchdog state"
-            git pull --rebase origin main
-            git push origin HEAD:main
-          fi
+            git pull --rebase origin main || true
+
+            if python3 telegram_watchdog.py; then
+              if ! git diff --quiet -- .watchdog_state.json; then
+                git add .watchdog_state.json
+                git commit -m "Update watchdog state"
+                git pull --rebase origin main
+                git push origin HEAD:main
+              fi
+            else
+              echo "Watchdog pass failed; retrying in 60 seconds"
+            fi
+
+            sleep 60
+          done
