@@ -47,15 +47,24 @@ def get_json(url):
 
 def send_telegram(token, text):
     data = urllib.parse.urlencode({"chat_id": CHAT_ID, "text": text}).encode()
-    req = urllib.request.Request(
-        f"https://api.telegram.org/bot{token}/sendMessage",
-        data=data,
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=20) as r:
-        payload = json.loads(r.read().decode("utf-8"))
-    if not payload.get("ok"):
-        raise RuntimeError(payload)
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            req = urllib.request.Request(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                data=data,
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=20) as r:
+                payload = json.loads(r.read().decode("utf-8"))
+            if not payload.get("ok"):
+                raise RuntimeError(payload)
+            return
+        except Exception as exc:
+            last_error = exc
+            if attempt < 3:
+                time.sleep(attempt * 2)
+    raise RuntimeError(f"Telegram send failed after 3 attempts: {last_error}")
 
 
 def fmt_time(ms):
@@ -78,12 +87,16 @@ def save_state(state):
         f.write("\n")
 
 
-def offline_text(label, updated_ms, age_ms):
+def offline_text(label, updated_ms, age_ms, detected_ms=None):
     mins = "невідомо" if age_ms is None else f"{age_ms / 60000:.1f} хв"
+    detected = ""
+    if detected_ms is not None:
+        detected = f"\nВиявлено: {fmt_time(detected_ms)}"
     return (
         f"🔴 {label} офлайн\n"
         f"Останнє оновлення: {fmt_time(updated_ms)}\n"
         f"Немає нових даних: {mins}"
+        f"{detected}"
     )
 
 
@@ -127,7 +140,7 @@ def main():
 
             if old_state is None:
                 if new_state == "offline":
-                    send_telegram(token, offline_text(label, updated_ms, age_ms))
+                    send_telegram(token, offline_text(label, updated_ms, age_ms, now_ms))
                     print(f"{label}: initial offline notified")
                 else:
                     print(f"{label}: initial online")
@@ -140,9 +153,17 @@ def main():
                 continue
 
             if new_state == "offline":
-                send_telegram(token, offline_text(label, updated_ms, age_ms))
+                send_telegram(token, offline_text(label, updated_ms, age_ms, now_ms))
             else:
-                send_telegram(token, f"🟢 {label} онлайн\nПередача даних відновлена.")
+                delay = "невідомо" if age_ms is None else f"{age_ms / 1000:.1f} с"
+                send_telegram(
+                    token,
+                    f"🟢 {label} онлайн\n"
+                    f"Передача даних відновлена.\n"
+                    f"Нові дані: {fmt_time(updated_ms)}\n"
+                    f"Виявлено: {fmt_time(now_ms)}\n"
+                    f"Затримка виявлення: {delay}"
+                )
 
             current[key] = new_state
             print(f"{label}: notified {new_state}")
