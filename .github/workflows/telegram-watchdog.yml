@@ -6,10 +6,10 @@ on:
     paths:
       - ".github/workflows/telegram-watchdog.yml"
       - "telegram_watchdog.py"
-  # A long-lived runner checks every 60 seconds.
-  # A new run is started every 3 hours before the old one's 3h45 window ends.
+  # Start a backup run every hour. Because cancel-in-progress is FALSE,
+  # the current long-lived runner keeps working until the queued replacement starts.
   schedule:
-    - cron: "17 */3 * * *"
+    - cron: "37 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -17,12 +17,12 @@ permissions:
 
 concurrency:
   group: telegram-station-watchdog-continuous
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 350
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,47 +35,66 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           python3 - <<'PY'
-          import json, os, urllib.parse, urllib.request
+          import json, os, time, urllib.parse, urllib.request
           token = os.environ["TELEGRAM_BOT_TOKEN"].strip()
           data = urllib.parse.urlencode({
               "chat_id": "-1004425577425",
-              "text": "✅ IGS watchdog перезапущено. Перевірка ST106, ST107, MAG і S2DW — щохвилини; офлайн після 5 хв без даних."
+              "text": "✅ IGS watchdog перезапущено. Безперервна перевірка ST106, ST107, MAG і S2DW — щохвилини; офлайн після 5 хв без даних."
           }).encode()
-          req = urllib.request.Request(
-              f"https://api.telegram.org/bot{token}/sendMessage",
-              data=data,
-              method="POST",
-          )
-          with urllib.request.urlopen(req, timeout=20) as r:
-              payload = json.loads(r.read().decode())
-          if not payload.get("ok"):
-              raise SystemExit(payload)
-          print("Telegram heartbeat sent")
+          last = None
+          for attempt in range(1, 4):
+              try:
+                  req = urllib.request.Request(
+                      f"https://api.telegram.org/bot{token}/sendMessage",
+                      data=data,
+                      method="POST",
+                  )
+                  with urllib.request.urlopen(req, timeout=20) as r:
+                      payload = json.loads(r.read().decode())
+                  if not payload.get("ok"):
+                      raise RuntimeError(payload)
+                  print("Telegram heartbeat sent")
+                  break
+              except Exception as exc:
+                  last = exc
+                  if attempt == 3:
+                      raise
+                  time.sleep(attempt * 2)
           PY
 
-      - name: Watch stations every minute
+      - name: Watch stations continuously
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Run for 3h45. The next scheduled run replaces this one before expiry.
-          end=$(( $(date +%s) + 13500 ))
+          # Stay alive for 5h40. GitHub schedules a replacement every hour.
+          # With cancel-in-progress=false, one replacement remains queued and
+          # takes over when this runner exits instead of killing it early.
+          end=$(( $(date +%s) + 20400 ))
           pass=0
 
           while [ "$(date +%s)" -lt "$end" ]; do
             pass=$((pass+1))
             echo "Watchdog pass $pass at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
-            git pull --rebase origin main || true
-
             if python3 telegram_watchdog.py; then
               if ! git diff --quiet -- .watchdog_state.json; then
                 git add .watchdog_state.json
                 git commit -m "Update watchdog state"
-                git pull --rebase origin main
-                git push origin HEAD:main
+
+                # Rebase only when a real state transition must be persisted.
+                # This avoids an unnecessary network operation every minute.
+                for attempt in 1 2 3; do
+                  if git pull --rebase origin main && git push origin HEAD:main; then
+                    echo "Watchdog state persisted"
+                    break
+                  fi
+                  echo "State push attempt $attempt failed"
+                  git rebase --abort 2>/dev/null || true
+                  sleep $((attempt * 3))
+                done
               fi
             else
               echo "Watchdog pass failed; retrying in 60 seconds"
@@ -83,3 +102,5 @@ jobs:
 
             sleep 60
           done
+
+          echo "Long-lived watchdog window completed cleanly."
