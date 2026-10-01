@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from collections import deque
@@ -8,6 +9,8 @@ from typing import Any
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
+
+import render_watchdog
 
 
 APP_TITLE = "IGS Monitoring"
@@ -69,6 +72,29 @@ async def health() -> dict[str, Any]:
             None if state["last_ingest_unix"] == 0 else round(age, 3)
         ),
     }
+
+
+@app.get("/watchdog")
+async def watchdog() -> JSONResponse:
+    """
+    One watchdog pass for ST106, ST107, MAG and S2DW.
+
+    Designed to be called by any free external HTTP scheduler once per minute.
+    State is persisted in Firebase, so repeated calls are idempotent and Telegram
+    is sent only on real online/offline transitions.
+    """
+    try:
+        result = await asyncio.to_thread(render_watchdog.run_once)
+        return JSONResponse(
+            result,
+            headers={"Cache-Control": "no-store"},
+        )
+    except Exception as exc:
+        return JSONResponse(
+            {"ok": False, "error": str(exc)},
+            status_code=500,
+            headers={"Cache-Control": "no-store"},
+        )
 
 
 @app.post("/api/ingest")
