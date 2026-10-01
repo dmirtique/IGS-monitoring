@@ -144,7 +144,7 @@ def build_message(label, new_state, updated_ms, age_ms, now_ms):
     )
 
 
-def main():
+def run_once():
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is missing")
@@ -153,12 +153,19 @@ def main():
     startup_message_once(token, now_ms)
 
     failures = []
+    result = {
+        "ok": True,
+        "watchdog_version": WATCHDOG_VERSION,
+        "checked_ms": now_ms,
+        "stations": {},
+    }
 
     for key, config in STATIONS.items():
         try:
             updated_ms, age_ms, new_state = read_station(config, now_ms)
             saved = read_saved_state(key)
             old_state = saved.get("state")
+            notified = False
 
             if old_state is None:
                 save_state(key, new_state, updated_ms, now_ms)
@@ -166,32 +173,52 @@ def main():
                     f"{config['label']}: initialized {new_state}, "
                     f"age={'unknown' if age_ms is None else f'{age_ms / 1000:.1f}s'}"
                 )
-                continue
-
-            if new_state == old_state:
+            elif new_state == old_state:
                 age_text = "unknown" if age_ms is None else f"{age_ms / 1000:.1f}s"
                 print(f"{config['label']}: unchanged {new_state}, age={age_text}")
-                continue
+            else:
+                message = build_message(
+                    config["label"],
+                    new_state,
+                    updated_ms,
+                    age_ms,
+                    now_ms,
+                )
 
-            message = build_message(
-                config["label"],
-                new_state,
-                updated_ms,
-                age_ms,
-                now_ms,
-            )
+                # State advances only after Telegram confirms delivery.
+                send_telegram(token, message)
+                save_state(key, new_state, updated_ms, now_ms)
+                notified = True
+                print(f"{config['label']}: notified {new_state}")
 
-            # State advances only after Telegram confirms delivery.
-            send_telegram(token, message)
-            save_state(key, new_state, updated_ms, now_ms)
-            print(f"{config['label']}: notified {new_state}")
+            result["stations"][key] = {
+                "label": config["label"],
+                "state": new_state,
+                "previous_state": old_state,
+                "last_data_ms": updated_ms,
+                "age_seconds": None if age_ms is None else round(age_ms / 1000, 3),
+                "telegram_notified": notified,
+            }
 
         except Exception as exc:
             failures.append(key)
+            result["stations"][key] = {
+                "label": config["label"],
+                "error": str(exc),
+            }
             print(f"{config['label']}: ERROR {exc}", file=sys.stderr, flush=True)
 
     if failures:
-        raise RuntimeError("Station checks failed: " + ", ".join(failures))
+        result["ok"] = False
+        result["failed_stations"] = failures
+        raise RuntimeError(json.dumps(result, ensure_ascii=False))
+
+    return result
+
+
+def main():
+    result = run_once()
+    print(json.dumps(result, ensure_ascii=False))
 
 
 if __name__ == "__main__":
