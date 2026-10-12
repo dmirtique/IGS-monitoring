@@ -1,6 +1,6 @@
 {
-  "mag": "offline",
-  "s2dw": "offline",
+  "mag": "online",
+  "s2dw": "online",
   "st107": "offline",
   "zir8": "offline"
 }
