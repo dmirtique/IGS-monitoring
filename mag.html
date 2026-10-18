@@ -136,7 +136,10 @@ function calibrateLegacy(n,raw){
 function physicalValue(n,r,v){
   const x=Number(v);
   if(!Number.isFinite(x))return NaN;
-  return r?.format==="physical_v1"?x:calibrateLegacy(n,x);
+  const physical=r?.format==="physical_v1"?x:calibrateLegacy(n,x);
+  // TPR scale correction for display: the current empirical calibration is ~10x high.
+  // Applied once after calibration for both physical_v1 and legacy raw records.
+  return n==="TPR"?physical/10:physical;
 }
 function numberText(n,v){
   if(!Number.isFinite(v))return "—";
