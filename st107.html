@@ -116,8 +116,12 @@ function render(){
   if(!dirty)return;
   dirty=false;
 
+  // Ignore implausible future timestamps left by a faulty station clock.
+  // Old Firebase ring-buffer slots can survive briefly after the logger is fixed.
+  const browserNow=Date.now();
   const records=[...pointsBySlot.values()]
     .filter(validRecord)
+    .filter(r=>Number(r[0])<=browserNow+30000)
     .sort((a,b)=>Number(a[0])-Number(b[0]));
 
   const bucketMs=Math.max(1,Number(status.bucket_seconds||1.0)*1000);
