@@ -17,7 +17,7 @@
 <body><div class="wrap">
 <div class="top"><div><h1>Онлайн-моніторинг ST107</h1><div class="meta" id="meta">Підключення до Firebase…</div></div>
 <div class="controls"><label class="control">Інтервал: <select id="window"><option value="10">10 секунд</option><option value="60" selected>1 хвилина</option><option value="300">5 хвилин</option></select></label><label class="control"><input type="checkbox" id="pause"> Пауза</label><div class="badge"><span class="dot" id="dot"></span><span id="statusText">Очікування даних…</span></div></div></div>
-<section class="summary"><div class="summary-item"><div class="label">Час станції</div><div class="value" id="stationTime">—</div></div><div class="summary-item"><div class="label">Частота дискретизації</div><div class="value" id="sampleRate">—</div></div><div class="summary-item"><div class="label">Останнє оновлення</div><div class="value" id="age">—</div></div></section>
+<section class="summary"><div class="summary-item"><div class="label" id="timeLabel">Час станції</div><div class="value" id="stationTime">—</div></div><div class="summary-item"><div class="label">Частота дискретизації</div><div class="value" id="sampleRate">—</div></div><div class="summary-item"><div class="label">Останнє оновлення</div><div class="value" id="age">—</div></div></section>
 <main class="stack" id="stack"></main>
 <div class="footer" id="footer">На сайт надходить 1 пакет/с із реальними точками; повний потік зберігається локально у HDF5.</div>
 </div>
@@ -188,14 +188,17 @@ function render(){
     ].join('')
   }
 
-  const age=Number.isFinite(Number(status.station_time_ms))
-    ?(Date.now()-Number(status.station_time_ms))/1000:null;
+  // Connectivity follows Firebase upload time, not an unreliable station clock.
+  const uploadedAt=Number(status.updated_ms);
+  const age=Number.isFinite(uploadedAt)&&uploadedAt>0
+    ?(Date.now()-uploadedAt)/1000:null;
   const hasStatus=age!==null;
-  const online=hasStatus&&age<300;
+  const online=hasStatus&&age>=-20&&age<300&&status.station_online!==false;
   document.getElementById('dot').classList.toggle('ok',online);
   document.getElementById('dot').classList.toggle('bad',hasStatus&&!online);
   document.getElementById('statusText').textContent=!hasStatus?'Очікування даних…':(online?'ST107 онлайн':'ST107 офлайн');
   document.getElementById('meta').textContent=`ST107 · АС-4 №2 · Firebase live · 1 пакет кожні ${(bucketMs/1000).toLocaleString('uk-UA')} с · до ${Number(status.live_points_per_bucket||100)} реальних точок/с · показано ${win} с`;
+  document.getElementById('timeLabel').textContent=status.time_source==='host_estimated'?'Час запису (за ПК, орієнтовний)':'Час станції';
   document.getElementById('stationTime').textContent=Number.isFinite(Number(status.station_time_ms))
     ?new Date(Number(status.station_time_ms)).toLocaleString('uk-UA'):'—';
   document.getElementById('sampleRate').textContent=status.sample_rate_hz
