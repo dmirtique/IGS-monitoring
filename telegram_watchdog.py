@@ -24,7 +24,7 @@ STATIONS = {
     "st107": {
         "label": "ST107",
         "path": "/public/st107/status.json",
-        "timestamp_field": "station_time_ms",
+        "timestamp_field": "updated_ms",
     },
     "mag": {
         "label": "MAG",
@@ -34,7 +34,7 @@ STATIONS = {
     "s2dw": {
         "label": "S2DW",
         "path": "/public/s2dw/status.json",
-        "timestamp_field": "station_time_ms",
+        "timestamp_field": "updated_ms",
     },
 }
 
@@ -107,6 +107,11 @@ def read_station(config, now_ms):
         return None, None, "offline"
 
     updated_ms = int(raw_updated_ms)
+    if updated_ms <= 0:
+        raise ValueError("Invalid heartbeat timestamp")
+    if updated_ms > now_ms + 120_000:
+        # A clock that is far ahead must not keep a station online forever.
+        raise ValueError(f"Heartbeat is {((updated_ms - now_ms) / 1000):.0f}s in the future")
     age_ms = max(0, now_ms - updated_ms)
     state = "online" if age_ms < OFFLINE_AFTER_MS else "offline"
     return updated_ms, age_ms, state
