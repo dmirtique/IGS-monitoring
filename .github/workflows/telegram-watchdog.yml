@@ -29,45 +29,20 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify Telegram on watchdog deploy
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        run: |
-          python3 - <<'PY'
-          import json, os, time, urllib.parse, urllib.request
-          token = os.environ["TELEGRAM_BOT_TOKEN"].strip()
-          data = urllib.parse.urlencode({
-              "chat_id": "-1004425577425",
-              "text": "✅ IGS watchdog перезапущено. Безперервна перевірка ST106, ST107, MAG і S2DW — щохвилини; офлайн після 5 хв без даних."
-          }).encode()
-          last = None
-          for attempt in range(1, 4):
-              try:
-                  req = urllib.request.Request(
-                      f"https://api.telegram.org/bot{token}/sendMessage",
-                      data=data,
-                      method="POST",
-                  )
-                  with urllib.request.urlopen(req, timeout=20) as r:
-                      payload = json.loads(r.read().decode())
-                  if not payload.get("ok"):
-                      raise RuntimeError(payload)
-                  print("Telegram heartbeat sent")
-                  break
-              except Exception as exc:
-                  last = exc
-                  if attempt == 3:
-                      raise
-                  time.sleep(attempt * 2)
-          PY
-
       - name: Watch stations continuously
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # A queued Actions run may check out an older commit. Refresh before
+          # reading .watchdog_state.json, or it will resend "online" alerts
+          # for already recovered stations when the previous runner exits.
+          git fetch origin main
+          git reset --hard origin/main
+          echo "Watchdog state refreshed from latest origin/main:"
+          cat .watchdog_state.json
 
           # Stay alive for 5h40. GitHub schedules a replacement every hour.
           # With cancel-in-progress=false, one replacement remains queued and
