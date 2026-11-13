@@ -16,7 +16,7 @@
 <body><div class="wrap">
 <div class="top"><div><h1>Онлайн-моніторинг S2DW</h1><div class="meta" id="meta">Підключення до Firebase…</div></div>
 <div class="controls"><label class="control">Інтервал: <select id="window"><option value="10">10 секунд</option><option value="60" selected>1 хвилина</option><option value="300">5 хвилин</option></select></label><label class="control"><input type="checkbox" id="pause"> Пауза</label><div class="badge"><span class="dot" id="dot"></span><span id="statusText">Очікування даних…</span></div></div></div>
-<section class="summary"><div class="summary-item"><div class="label">Час станції</div><div class="value" id="stationTime">—</div></div><div class="summary-item"><div class="label">Частота дискретизації</div><div class="value" id="sampleRate">—</div></div><div class="summary-item"><div class="label">Останнє оновлення</div><div class="value" id="age">—</div></div></section>
+<section class="summary"><div class="summary-item"><div class="label">Час оновлення (ПК)</div><div class="value" id="stationTime">—</div></div><div class="summary-item"><div class="label">Частота дискретизації</div><div class="value" id="sampleRate">—</div></div><div class="summary-item"><div class="label">Останнє оновлення</div><div class="value" id="age">—</div></div></section>
 <main class="stack" id="stack"></main>
 <div class="footer" id="footer">На сайт надходить 1 пакет/с; повний потік 200 Гц зберігається локально у CSV.</div>
 </div>
@@ -48,7 +48,12 @@ function closeStreams(){if(pointSource){pointSource.close();pointSource=null}if(
 function statBox(l,v,t=""){return`<div class="stat" title="${t||v}"><div class="stat-label">${l}</div><div class="stat-value">${v}</div></div>`}
 function render(){
 if(!dirty)return;dirty=false;
-const records=[...pointsBySlot.values()].filter(validRecord).sort((a,b)=>Number(a[0])-Number(b[0]));
+// The device logger previously sent future timestamps. Discard such points,
+ // as well as old slots, rather than letting an invalid packet shift the chart.
+const browserNow=Date.now();
+const records=[...pointsBySlot.values()].filter(validRecord)
+ .filter(r=>Number(r[0])>=browserNow-600000&&Number(r[0])<=browserNow+5000)
+ .sort((a,b)=>Number(a[0])-Number(b[0]));
 const bucketMs=Math.max(1,Number(status.bucket_seconds||1)*1000);
 const newest=records.length?Number(records.at(-1)[0])+bucketMs:Date.now();
 const win=Number(document.getElementById("window").value),cut=newest-win*1000;
@@ -79,13 +84,24 @@ statBox("Пакетів / точок",`${visible.length} / ${displayPoints}`)
 ].join("");
 }
 const stationMs=Number(status.station_time_ms);
-const age=Number.isFinite(stationMs)?(Date.now()-stationMs)/1000:null,hasStatus=age!==null,online=hasStatus&&age<300;
-document.getElementById("dot").classList.toggle("ok",online);document.getElementById("dot").classList.toggle("bad",hasStatus&&!online);
-document.getElementById("statusText").textContent=!hasStatus?"Очікування даних…":(online?"S2DW онлайн":"S2DW офлайн");
+const uploadMs=Number(status.updated_ms);
+const nowMs=Date.now();
+const uploadValid=Number.isFinite(uploadMs)&&uploadMs>0;
+const dataValid=Number.isFinite(stationMs)&&stationMs>0;
+const invalidFuture=dataValid&&stationMs>nowMs+30000;
+const uploadAge=uploadValid?(nowMs-uploadMs)/1000:null;
+const dataAge=dataValid?(nowMs-stationMs)/1000:null;
+const hasStatus=uploadValid||dataValid;
+const online=hasStatus&&uploadAge!==null&&uploadAge>=-30&&uploadAge<300&&
+             dataAge!==null&&dataAge>=-30&&dataAge<300;
+document.getElementById("dot").classList.toggle("ok",online);
+document.getElementById("dot").classList.toggle("bad",hasStatus&&!online);
+document.getElementById("statusText").textContent=!hasStatus?"Очікування даних…":
+ (invalidFuture?"Некоректний час даних":(online?"S2DW онлайн":"S2DW офлайн"));
 document.getElementById("meta").textContent=`BIGTREETECH S2DW V1.0 · LIS2DW12 · Firebase live · 1 пакет/с · до ${Number(status.live_points_per_bucket||100)} реальних точок/с · показано ${win} с`;
-document.getElementById("stationTime").textContent=Number.isFinite(stationMs)?new Date(stationMs).toLocaleString("uk-UA"):"—";
+document.getElementById("stationTime").textContent=uploadValid?new Date(uploadMs).toLocaleString("uk-UA"):"—";
 document.getElementById("sampleRate").textContent=status.sample_rate_hz?`${Number(status.sample_rate_hz).toLocaleString("uk-UA")} Гц`:"—";
-document.getElementById("age").textContent=age===null?"—":`${Math.max(0,age).toFixed(1)} с тому`;
+document.getElementById("age").textContent=uploadAge===null?"—":`${Math.max(0,uploadAge).toFixed(1)} с тому`;
 document.getElementById("footer").textContent=`На сайт: 1 пакет/с, до ${Number(status.live_points_per_bucket||100)} реальних точок/с. Повний потік 200 Гц зберігається локально у CSV на диску D.`;
 }
 document.getElementById("window").addEventListener("change",()=>{dirty=true});
