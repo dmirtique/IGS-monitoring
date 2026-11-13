@@ -6,8 +6,7 @@ on:
     paths:
       - ".github/workflows/telegram-watchdog.yml"
       - "telegram_watchdog.py"
-  # Start a backup run every hour. Because cancel-in-progress is FALSE,
-  # the current long-lived runner keeps working until the queued replacement starts.
+  # Hourly replacement; the prior runner is stopped when the new run starts.
   schedule:
     - cron: "37 * * * *"
   workflow_dispatch:
@@ -15,9 +14,11 @@ on:
 permissions:
   contents: write
 
+# A new deployment or hourly replacement must stop the old version.
+# Otherwise the previous long-lived runner keeps sending obsolete alerts.
 concurrency:
   group: telegram-station-watchdog-continuous
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   check:
@@ -44,9 +45,7 @@ jobs:
           echo "Watchdog state refreshed from latest origin/main:"
           cat .watchdog_state.json
 
-          # Stay alive for 5h40. GitHub schedules a replacement every hour.
-          # With cancel-in-progress=false, one replacement remains queued and
-          # takes over when this runner exits instead of killing it early.
+          # Watch continuously; next hourly run or new deployment replaces this one.
           end=$(( $(date +%s) + 20400 ))
           pass=0
 
