@@ -102,7 +102,7 @@ document.getElementById("meta").textContent=`BIGTREETECH S2DW V1.0 · LIS2DW12 �
 document.getElementById("stationTime").textContent=uploadValid?new Date(uploadMs).toLocaleString("uk-UA"):"—";
 document.getElementById("sampleRate").textContent=status.sample_rate_hz?`${Number(status.sample_rate_hz).toLocaleString("uk-UA")} Гц`:"—";
 document.getElementById("age").textContent=uploadAge===null?"—":`${Math.max(0,uploadAge).toFixed(1)} с тому`;
-document.getElementById("footer").textContent=`На сайт: 1 пакет/с, до ${Number(status.live_points_per_bucket||100)} реальних точок/с. Повний потік 200 Гц зберігається локально у CSV на диску D.`;
+document.getElementById("footer").textContent=`На сайт: 1 пакет/с, до ${Number(status.live_points_per_bucket||100)} реальних точок/с. Повний потік 1600 Гц зберігається локально у HDF5 на диску D.`;
 }
 document.getElementById("window").addEventListener("change",()=>{dirty=true});
 document.getElementById("pause").addEventListener("change",e=>{paused=e.target.checked;if(paused)closeStreams();else connect()});
