@@ -31,13 +31,13 @@ STATIONS = {
         "label": "ST107",
         "path": "/public/st107/status.json",
         "timestamp_field": "updated_ms",
+        "data_field": "station_time_ms",
+        "points_path": "/public/st107/points.json",
     },
     "mag": {
         "label": "MAG",
         "path": "/public/mag/status.json",
         "timestamp_field": "updated_ms",
-        "data_field": "station_time_ms",
-        "points_path": "/public/st107/points.json",
     },
     "s2dw": {
         "label": "S2DW",
