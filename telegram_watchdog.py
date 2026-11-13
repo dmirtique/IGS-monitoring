@@ -10,7 +10,13 @@ from zoneinfo import ZoneInfo
 DB = "https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app"
 CHAT_ID = "-1004425577425"
 OFFLINE_AFTER_MS = 5 * 60 * 1000
+ONLINE_CONFIRM_MS = 5 * 60 * 1000
+RECOVERY_FRESH_MS = 90 * 1000
+MAX_CHECK_GAP_MS = 130 * 1000
+RECOVERY_PROGRESS_SLACK_MS = 40 * 1000
 STATE_FILE = ".watchdog_state.json"
+RECOVERY_FILE = ".watchdog_recovery.json"  # Local runner checkpoint; not committed to Git.
+
 KYIV_TZ = ZoneInfo("Europe/Kyiv")
 
 # These are the same Firebase status nodes and timestamps used by the pages.
@@ -30,11 +36,15 @@ STATIONS = {
         "label": "MAG",
         "path": "/public/mag/status.json",
         "timestamp_field": "updated_ms",
+        "data_field": "station_time_ms",
+        "points_path": "/public/st107/points.json",
     },
     "s2dw": {
         "label": "S2DW",
         "path": "/public/s2dw/status.json",
         "timestamp_field": "updated_ms",
+        "data_field": "station_time_ms",
+        "points_path": "/public/s2dw/points.json",
     },
 }
 
@@ -100,21 +110,113 @@ def offline_text(label, updated_ms, age_ms, detected_ms=None):
     )
 
 
+
+def load_recovery():
+    """Pending online confirmation survives each one-minute Python invocation."""
+    try:
+        with open(RECOVERY_FILE, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except (FileNotFoundError, ValueError, OSError):
+        return {}
+
+
+def save_recovery(recovery):
+    temp = RECOVERY_FILE + ".tmp"
+    with open(temp, "w", encoding="utf-8") as handle:
+        json.dump(recovery, handle, ensure_ascii=False, sort_keys=True, indent=2)
+        handle.write("\n")
+    os.replace(temp, RECOVERY_FILE)
+
+
+def has_five_minute_sample_coverage(config, data_ms):
+    """Verify a near-continuous five-minute one-second data series.
+
+    This complements five minutes of successive *delivery* observations.
+    It blocks false recoveries caused by a brief upload of cached old packets.
+    Only ST107 and S2DW have this one-second circular buffer.
+    """
+    points_path = config.get("points_path")
+    if not points_path:
+        return True
+    raw = get_json(DB + points_path) or {}
+    if not isinstance(raw, dict):
+        return False
+    end_second = int(data_ms // 1000)
+    valid_seconds = sorted({
+        int(float(record[0]) // 1000)
+        for record in raw.values()
+        if isinstance(record, list)
+        and record
+        and isinstance(record[0], (int, float))
+        and end_second - 301 <= float(record[0]) / 1000 <= end_second + 1
+    })
+    if len(valid_seconds) < 295:
+        return False
+    if valid_seconds[-1] - valid_seconds[0] < 294:
+        return False
+    return all(b - a <= 3 for a, b in zip(valid_seconds, valid_seconds[1:]))
+
+
+def recovery_check(pending, *, now_ms, data_ms, updated_ms):
+    """Five minutes of fresh, advancing data checked about once per minute."""
+    checkpoint = {
+        "start_ms": now_ms,
+        "checked_ms": now_ms,
+        "last_data_ms": data_ms,
+        "last_update_ms": updated_ms,
+        "observations": 1,
+    }
+    if not isinstance(pending, dict):
+        return checkpoint, False
+    elapsed = now_ms - int(pending.get("checked_ms", 0))
+    data_progress = data_ms - int(pending.get("last_data_ms", 0))
+    update_progress = updated_ms - int(pending.get("last_update_ms", 0))
+    if (
+        elapsed <= 0 or elapsed > MAX_CHECK_GAP_MS
+        or data_progress < max(1000, elapsed - RECOVERY_PROGRESS_SLACK_MS)
+        or data_progress > elapsed + RECOVERY_PROGRESS_SLACK_MS
+        or update_progress <= 0
+    ):
+        return checkpoint, False
+    pending["checked_ms"] = now_ms
+    pending["last_data_ms"] = data_ms
+    pending["last_update_ms"] = updated_ms
+    pending["observations"] = int(pending.get("observations", 1)) + 1
+    confirmed = (
+        now_ms - int(pending["start_ms"]) >= ONLINE_CONFIRM_MS
+        and pending["observations"] >= 5
+    )
+    return pending, confirmed
+
+
 def read_station(config, now_ms):
     status = get_json(DB + config["path"]) or {}
+    if not isinstance(status, dict):
+        raise ValueError("Invalid Firebase station status")
     raw_updated_ms = status.get(config["timestamp_field"])
     if raw_updated_ms is None:
-        return None, None, "offline"
-
+        return None, None, "offline", None, False
     updated_ms = int(raw_updated_ms)
-    if updated_ms <= 0:
-        raise ValueError("Invalid heartbeat timestamp")
-    if updated_ms > now_ms + 120_000:
-        # A clock that is far ahead must not keep a station online forever.
-        raise ValueError(f"Heartbeat is {((updated_ms - now_ms) / 1000):.0f}s in the future")
-    age_ms = max(0, now_ms - updated_ms)
-    state = "online" if age_ms < OFFLINE_AFTER_MS else "offline"
-    return updated_ms, age_ms, state
+    data_ms = int(status.get(config.get("data_field", config["timestamp_field"])) or 0)
+    if updated_ms <= 0 or data_ms <= 0:
+        return data_ms or None, None, "offline", updated_ms or None, False
+    if max(updated_ms, data_ms) > now_ms + 120_000:
+        raise ValueError("Firebase timestamp is too far in the future")
+
+    age_ms = max(0, now_ms - data_ms)
+    delivery_age_ms = max(0, now_ms - updated_ms)
+    data_available = age_ms < OFFLINE_AFTER_MS
+    # A fresh HTTP write without any new sensor data does not mean
+    # the station has recovered. Restrict green confirmation accordingly.
+    recovery_fresh = (
+        data_available
+        and age_ms <= RECOVERY_FRESH_MS
+        and delivery_age_ms <= RECOVERY_FRESH_MS
+        and status.get("station_online") is not False
+    )
+    raw_state = "online" if data_available else "offline"
+    return data_ms, age_ms, raw_state, updated_ms, recovery_fresh
 
 
 def main():
@@ -125,61 +227,98 @@ def main():
 
     previous = load_state()
     current = dict(previous)
+    recovery = load_recovery()
     had_error = False
-
-    if not previous:
-        send_telegram(
-            token,
-            "✅ IGS watchdog активовано\n"
-            "ST106, ST107, MAG і S2DW перевіряються щохвилини. "
-            "Станція вважається офлайн після 5 хв без нових даних.",
-        )
-
     now_ms = int(time.time() * 1000)
 
     for key, config in STATIONS.items():
         label = config["label"]
         try:
-            updated_ms, age_ms, new_state = read_station(config, now_ms)
+            data_ms, age_ms, raw_state, updated_ms, fresh = read_station(config, now_ms)
             old_state = previous.get(key)
 
             if old_state is None:
-                if new_state == "offline":
-                    send_telegram(token, offline_text(label, updated_ms, age_ms, now_ms))
+                # Never announce online on the very first packet.
+                if raw_state == "offline":
+                    send_telegram(token, offline_text(label, data_ms, age_ms, now_ms))
+                    current[key] = "offline"
+                    recovery.pop(key, None)
                     print(f"{label}: initial offline notified")
                 else:
-                    print(f"{label}: initial online")
-                current[key] = new_state
+                    current[key] = "offline"
+                    if fresh:
+                        recovery[key], _ = recovery_check(
+                            None, now_ms=now_ms, data_ms=data_ms, updated_ms=updated_ms
+                        )
+                    print(f"{label}: initial fresh data; verifying 5 minutes")
                 continue
 
-            if new_state == old_state:
-                age_text = "unknown" if age_ms is None else f"{age_ms / 1000:.1f}s"
-                print(f"{label}: unchanged {new_state}, age={age_text}")
+            if raw_state == "offline":
+                recovery.pop(key, None)
+                if old_state == "online":
+                    send_telegram(token, offline_text(label, data_ms, age_ms, now_ms))
+                    current[key] = "offline"
+                    print(f"{label}: notified offline")
+                else:
+                    print(f"{label}: still offline")
                 continue
 
-            if new_state == "offline":
-                send_telegram(token, offline_text(label, updated_ms, age_ms, now_ms))
-            else:
-                delay = "невідомо" if age_ms is None else f"{age_ms / 1000:.1f} с"
-                send_telegram(
-                    token,
-                    f"🟢 {label} онлайн\n"
-                    f"Передача даних відновлена.\n"
-                    f"Нові дані: {fmt_time(updated_ms)}\n"
-                    f"Виявлено: {fmt_time(now_ms)}\n"
-                    f"Затримка виявлення: {delay}"
+            if old_state == "online":
+                recovery.pop(key, None)
+                print(f"{label}: still online, data age={age_ms / 1000:.1f}s")
+                continue
+
+            # We previously sent/offline and have some data again.
+            # Wait for 5 minutes of independent regular observations, not
+            # a few brief bursts or late uploads of old queued packets.
+            if not fresh:
+                recovery.pop(key, None)
+                print(f"{label}: offline, stale data/delivery; recovery reset")
+                continue
+
+            recovery[key], verified = recovery_check(
+                recovery.get(key),
+                now_ms=now_ms,
+                data_ms=data_ms,
+                updated_ms=updated_ms,
+            )
+            elapsed = max(0, now_ms - int(recovery[key]["start_ms"]))
+            if not verified:
+                print(
+                    f"{label}: recovery {elapsed / 60000:.1f}/5.0 min "
+                    f"(observations={recovery[key]['observations']}); no alert yet"
                 )
+                continue
 
-            current[key] = new_state
-            print(f"{label}: notified {new_state}")
+            if not has_five_minute_sample_coverage(config, data_ms):
+                # Requiring continuous one-second records prevents green
+                # on a sequence of sporadic reconnects and cached uploads.
+                recovery.pop(key, None)
+                print(f"{label}: no complete five-minute sample history; recovery reset")
+                continue
 
-        except Exception as e:
-            print(f"{label}: check failed: {e}", file=sys.stderr)
+            delay = f"{age_ms / 1000:.1f} с"
+            send_telegram(
+                token,
+                f"🟢 {label} онлайн\n"
+                f"Передача даних стабільна щонайменше 5 хвилин.\n"
+                f"Нові дані: {fmt_time(data_ms)}\n"
+                f"Виявлено: {fmt_time(now_ms)}\n"
+                f"Затримка даних: {delay}"
+            )
+            current[key] = "online"
+            recovery.pop(key, None)
+            print(f"{label}: notified online after verified 5 minutes")
+
+        except Exception as exc:
+            print(f"{label}: check failed: {exc}", file=sys.stderr)
             had_error = True
 
+    # Persist only confirmed online/offline transitions to Git; local pending
+    # does not generate a commit or trigger unnecessary Render deployments.
+    save_recovery(recovery)
     if current != previous:
         save_state(current)
-
     if had_error:
         sys.exit(1)
 
