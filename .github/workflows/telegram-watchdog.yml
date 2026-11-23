@@ -6,16 +6,16 @@ on:
     paths:
       - ".github/workflows/telegram-watchdog.yml"
       - "telegram_watchdog.py"
-  # Hourly replacement; the prior runner is stopped when the new run starts.
+  # Poll every 10 minutes; each short run is long enough to verify 5 minutes of live data.
   schedule:
-    - cron: "37 * * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
-# A new deployment or hourly replacement must stop the old version.
-# Otherwise the previous long-lived runner keeps sending obsolete alerts.
+# Prevent overlapping watchdogs and stale deployments.
+# A new deployment or delayed scheduled run replaces an overrun job.
 concurrency:
   group: telegram-station-watchdog-continuous
   cancel-in-progress: true
@@ -23,7 +23,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 12
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,8 +46,10 @@ jobs:
           cat .watchdog_state.json
           python3 -m py_compile telegram_watchdog.py
 
-          # Watch continuously; next hourly run or new deployment replaces this one.
-          end=$(( $(date +%s) + 20400 ))
+          # Eight-minute check window, with a two-minute nominal gap before the
+          # next scheduled run. Five-minute online recovery verification fits inside.
+          # Short jobs avoid the long gaps seen after 5h40m runner completion.
+          end=$(( $(date +%s) + 480 ))
           pass=0
 
           while [ "$(date +%s)" -lt "$end" ]; do
@@ -78,4 +80,4 @@ jobs:
             sleep 60
           done
 
-          echo "Long-lived watchdog window completed cleanly."
+          echo "Eight-minute watchdog window completed cleanly."
