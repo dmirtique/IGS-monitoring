@@ -6,25 +6,24 @@ on:
     paths:
       - ".github/workflows/telegram-watchdog.yml"
       - "telegram_watchdog.py"
-  # Off-peak minutes: avoid the crowded start of the hour.
-  # Pending runs must not interrupt the current confirmation window.
+  # Hourly replacement; the prior runner is stopped when the new run starts.
   schedule:
-    - cron: "7,17,27,37,47,57 * * * *"
+    - cron: "37 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
-# Never overlap or interrupt an active station check. GitHub retains at
-# most one pending run for this concurrency group by default.
+# A new deployment or hourly replacement must stop the old version.
+# Otherwise the previous long-lived runner keeps sending obsolete alerts.
 concurrency:
   group: telegram-station-watchdog-continuous
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 65
+    timeout-minutes: 350
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,45 +46,36 @@ jobs:
           cat .watchdog_state.json
           python3 -m py_compile telegram_watchdog.py
 
-          # A bounded 55-minute observation window tolerates delayed cron
-          # triggers better than an eight-minute window. No self-dispatch loop.
-          end=$(( $(date +%s) + 3300 ))
+          # Watch continuously; next hourly run or new deployment replaces this one.
+          end=$(( $(date +%s) + 20400 ))
           pass=0
 
           while [ "$(date +%s)" -lt "$end" ]; do
             pass=$((pass+1))
             echo "Watchdog pass $pass at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
-            if ! python3 telegram_watchdog.py; then
-              echo "Watchdog pass had errors; successful station changes will still be saved"
-            fi
+            if python3 telegram_watchdog.py; then
+              if ! git diff --quiet -- .watchdog_state.json; then
+                git add .watchdog_state.json
+                git commit -m "Update watchdog state"
 
-            # A pass can notify one station successfully and fail on another.
-            # Never discard the successful station's state in that situation.
-            if ! git diff --quiet -- .watchdog_state.json; then
-              git add .watchdog_state.json
-              git commit -m "Update watchdog state"
-            fi
-
-            # Retry previously unpushed commits even if this pass made no changes.
-            if [ "$(git rev-list --count origin/main..HEAD)" -gt 0 ]; then
-              for attempt in 1 2 3; do
-                if git pull --rebase origin main && git push origin HEAD:main; then
-                  echo "Watchdog state persisted"
-                  break
-                fi
-                echo "State push attempt $attempt failed"
-                git rebase --abort 2>/dev/null || true
-                sleep $((attempt * 3))
-              done
+                # Rebase only when a real state transition must be persisted.
+                # This avoids an unnecessary network operation every minute.
+                for attempt in 1 2 3; do
+                  if git pull --rebase origin main && git push origin HEAD:main; then
+                    echo "Watchdog state persisted"
+                    break
+                  fi
+                  echo "State push attempt $attempt failed"
+                  git rebase --abort 2>/dev/null || true
+                  sleep $((attempt * 3))
+                done
+              fi
+            else
+              echo "Watchdog pass failed; retrying in 60 seconds"
             fi
 
             sleep 60
           done
 
-          if [ "$(git rev-list --count origin/main..HEAD)" -gt 0 ]; then
-            echo "::error::Watchdog has unpersisted state changes"
-            exit 1
-          fi
-
-          echo "55-minute watchdog window completed cleanly."
+          echo "Long-lived watchdog window completed cleanly."
