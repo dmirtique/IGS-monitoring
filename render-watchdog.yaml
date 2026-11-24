@@ -1,0 +1,19 @@
+services:
+  - type: worker
+    name: igs-telegram-watchdog
+    runtime: python
+    repo: https://github.com/dmirtique/IGS-monitoring
+    branch: render-watchdog-worker
+    region: frankfurt
+    plan: starter
+    buildCommand: python -m py_compile telegram_watchdog.py render_watchdog_worker.py
+    startCommand: python -u render_watchdog_worker.py
+    disk:
+      name: watchdog-state
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: WATCHDOG_ENABLED
+        value: "0"
