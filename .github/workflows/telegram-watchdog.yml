@@ -6,24 +6,25 @@ on:
     paths:
       - ".github/workflows/telegram-watchdog.yml"
       - "telegram_watchdog.py"
-  # Poll every 10 minutes; each short run is long enough to verify 5 minutes of live data.
+  # Off-peak minutes: avoid the crowded start of the hour.
+  # Pending runs must not interrupt the current confirmation window.
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "7,17,27,37,47,57 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
-# Prevent overlapping watchdogs and stale deployments.
-# A new deployment or delayed scheduled run replaces an overrun job.
+# Never overlap or interrupt an active station check. GitHub retains at
+# most one pending run for this concurrency group by default.
 concurrency:
   group: telegram-station-watchdog-continuous
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 65
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,38 +47,45 @@ jobs:
           cat .watchdog_state.json
           python3 -m py_compile telegram_watchdog.py
 
-          # Eight-minute check window, with a two-minute nominal gap before the
-          # next scheduled run. Five-minute online recovery verification fits inside.
-          # Short jobs avoid the long gaps seen after 5h40m runner completion.
-          end=$(( $(date +%s) + 480 ))
+          # A bounded 55-minute observation window tolerates delayed cron
+          # triggers better than an eight-minute window. No self-dispatch loop.
+          end=$(( $(date +%s) + 3300 ))
           pass=0
 
           while [ "$(date +%s)" -lt "$end" ]; do
             pass=$((pass+1))
             echo "Watchdog pass $pass at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
-            if python3 telegram_watchdog.py; then
-              if ! git diff --quiet -- .watchdog_state.json; then
-                git add .watchdog_state.json
-                git commit -m "Update watchdog state"
+            if ! python3 telegram_watchdog.py; then
+              echo "Watchdog pass had errors; successful station changes will still be saved"
+            fi
 
-                # Rebase only when a real state transition must be persisted.
-                # This avoids an unnecessary network operation every minute.
-                for attempt in 1 2 3; do
-                  if git pull --rebase origin main && git push origin HEAD:main; then
-                    echo "Watchdog state persisted"
-                    break
-                  fi
-                  echo "State push attempt $attempt failed"
-                  git rebase --abort 2>/dev/null || true
-                  sleep $((attempt * 3))
-                done
-              fi
-            else
-              echo "Watchdog pass failed; retrying in 60 seconds"
+            # A pass can notify one station successfully and fail on another.
+            # Never discard the successful station's state in that situation.
+            if ! git diff --quiet -- .watchdog_state.json; then
+              git add .watchdog_state.json
+              git commit -m "Update watchdog state"
+            fi
+
+            # Retry previously unpushed commits even if this pass made no changes.
+            if [ "$(git rev-list --count origin/main..HEAD)" -gt 0 ]; then
+              for attempt in 1 2 3; do
+                if git pull --rebase origin main && git push origin HEAD:main; then
+                  echo "Watchdog state persisted"
+                  break
+                fi
+                echo "State push attempt $attempt failed"
+                git rebase --abort 2>/dev/null || true
+                sleep $((attempt * 3))
+              done
             fi
 
             sleep 60
           done
 
-          echo "Eight-minute watchdog window completed cleanly."
+          if [ "$(git rev-list --count origin/main..HEAD)" -gt 0 ]; then
+            echo "::error::Watchdog has unpersisted state changes"
+            exit 1
+          fi
+
+          echo "55-minute watchdog window completed cleanly."
