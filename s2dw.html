@@ -89,7 +89,7 @@ charts[n]=new Chart(document.getElementById(n),{type:"line",data:{datasets:[
 {label:"Мінімум",data:[],borderColor:"rgba(77,178,255,0)",backgroundColor:"rgba(77,178,255,.14)",borderWidth:0,pointRadius:0,tension:0,fill:false},
 {label:"Діапазон min–max",data:[],borderColor:"rgba(77,178,255,0)",backgroundColor:"rgba(77,178,255,.14)",borderWidth:0,pointRadius:0,tension:0,fill:"-1"},
 {label:"Сигнал",data:[],borderColor:"#4db2ff",backgroundColor:"rgba(77,178,255,0)",borderWidth:1.1,pointRadius:0,pointHitRadius:7,tension:0,spanGaps:false}
-]},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,interaction:{mode:"nearest",intersect:false,axis:"x"},plugins:{legend:{display:false},decimation:{enabled:true,algorithm:"min-max",threshold:2000},tooltip:{displayColors:false,filter:i=>i.datasetIndex===2,callbacks:{title:x=>x.length?timeText(x[0].parsed.x,true):"",label:c=>detail(c.parsed.y)}}},scales:{x:{type:"linear",ticks:{maxTicksLimit:9,color:"#94a7c5",callback:v=>timeText(Number(v))},grid:{color:"rgba(147,169,204,.14)"},title:{display:true,text:"Час",color:"#94a7c5"}},y:{grace:"8%",ticks:{color:"#94a7c5",callback:v=>sci(Number(v))},grid:{color:"rgba(147,169,204,.14)"},title:{display:true,text:"м/с²",color:"#94a7c5"}}}}})
+]},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:false,interaction:{mode:"nearest",intersect:false,axis:"x"},plugins:{legend:{display:false},decimation:{enabled:false},tooltip:{displayColors:false,filter:i=>i.datasetIndex===2,callbacks:{title:x=>x.length?timeText(x[0].parsed.x,true):"",label:c=>detail(c.parsed.y)}}},scales:{x:{type:"linear",ticks:{maxTicksLimit:9,color:"#94a7c5",callback:v=>timeText(Number(v))},grid:{color:"rgba(147,169,204,.14)"},title:{display:true,text:"Час",color:"#94a7c5"}},y:{grace:"8%",ticks:{color:"#94a7c5",callback:v=>sci(Number(v))},grid:{color:"rgba(147,169,204,.14)"},title:{display:true,text:"м/с²",color:"#94a7c5"}}}}})
 }
 function validRecord(r){return Array.isArray(r)&&r.length>=24&&Number.isFinite(Number(r[0]))}
 function applyPointEvent(ev){const p=JSON.parse(ev.data),path=p.path,data=p.data;if(path==="/"){pointsBySlot.clear();if(data)for(const[k,v]of Object.entries(data))if(validRecord(v))pointsBySlot.set(k,v)}else{const k=path.replace(/^\//,"");if(data===null)pointsBySlot.delete(k);else if(validRecord(data))pointsBySlot.set(k,data)}dirty=true}
@@ -110,6 +110,7 @@ function connect(){
 }
 function closeStreams(){if(pointSource){pointSource.close();pointSource=null}if(statusSource){statusSource.close();statusSource=null}}
 function statBox(l,v,t=""){return`<div class="stat" title="${t||v}"><div class="stat-label">${l}</div><div class="stat-value">${v}</div></div>`}
+function appendWithGap(arr,p,maxGap){const prev=arr.at(-1);if(prev&&p.x-prev.x>maxGap)arr.push({x:(prev.x+p.x)/2,y:null});arr.push(p)}
 function render(){
 if(!dirty)return;dirty=false;
 // The device logger previously sent future timestamps. Discard such points,
@@ -128,9 +129,9 @@ let min=Infinity,max=-Infinity,peak=null,latest=NaN,sumSq=0,count=0,displayPoint
 for(const r of visible){
 const t0=Number(r[0]),center=t0+bucketMs/2;
 const minValue=Number(r[base+1]),maxValue=Number(r[base+3]),lastValue=Number(r[base+4]),rmsValue=Number(r[base+5]),samples=Number(r[1]);
-lower.push({x:center,y:minValue});upper.push({x:center,y:maxValue});
+appendWithGap(lower,{x:center,y:minValue},bucketMs*1.5);appendWithGap(upper,{x:center,y:maxValue},bucketMs*1.5);
 const offsets=Array.isArray(r[20])?r[20]:null,sampled=Array.isArray(r[21+c])?r[21+c]:null;
-if(offsets&&sampled&&offsets.length===sampled.length&&offsets.length){for(let j=0;j<offsets.length;j++){const x=t0+Number(offsets[j]),y=Number(sampled[j]);if(Number.isFinite(x)&&Number.isFinite(y))signal.push({x,y})}}else signal.push({x:t0+bucketMs,y:lastValue});
+if(offsets&&sampled&&offsets.length===sampled.length&&offsets.length){for(let j=0;j<offsets.length;j++){const x=t0+Number(offsets[j]),y=Number(sampled[j]);if(Number.isFinite(x)&&Number.isFinite(y))appendWithGap(signal,{x,y},100)}}else appendWithGap(signal,{x:t0+bucketMs,y:lastValue},100);
 if(minValue<min)min=minValue;if(maxValue>max)max=maxValue;
 const p1={x:t0+Number(r[base]),y:minValue},p2={x:t0+Number(r[base+2]),y:maxValue};
 if(!peak||Math.abs(p1.y)>Math.abs(peak.y))peak=p1;if(!peak||Math.abs(p2.y)>Math.abs(peak.y))peak=p2;
@@ -144,7 +145,7 @@ statBox("Макс. |значення|",peak?detail(Math.abs(peak.y)):"—",peak?
 statBox("RMS",detail(rms)),
 statBox("Мінімум",Number.isFinite(min)?detail(min):"—"),
 statBox("Максимум",Number.isFinite(max)?detail(max):"—"),
-statBox("Пакетів / точок",`${visible.length} / ${displayPoints}`)
+statBox("Пакетів / точок",`${visible.length} / ${displayPoints}`,`Очікується близько ${Math.round(win*1000/bucketMs)} пакетів; розриви не з’єднуються`)
 ].join("");
 }
 const stationMs=Number(status.station_time_ms);
@@ -170,7 +171,7 @@ document.getElementById("window").addEventListener("change",()=>{dirty=true});
 document.getElementById("pause").addEventListener("change",e=>{paused=e.target.checked;if(paused)closeStreams();else connect()});
 stationSelect.addEventListener("change",e=>chooseStation(e.target.value));
 document.addEventListener("visibilitychange",()=>{if(document.hidden)closeStreams();else{discoverStations();if(!paused)connect()}});
-setInterval(()=>{dirty=true;render()},250);setInterval(refreshStationMenu,1000);setInterval(discoverStations,DISCOVERY_MS);discoverStations();
+setInterval(()=>{dirty=true;render()},1000);setInterval(refreshStationMenu,1000);setInterval(discoverStations,DISCOVERY_MS);discoverStations();
 </script>
 </body>
 </html>
