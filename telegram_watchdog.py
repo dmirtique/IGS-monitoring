@@ -13,7 +13,7 @@ CHAT_ID = "-1004425577425"
 OFFLINE_AFTER_MS = 5 * 60 * 1000
 ONLINE_CONFIRM_MS = 5 * 60 * 1000
 RECOVERY_FRESH_MS = 90 * 1000
-S2DW_ONLINE_MS = 30 * 1000
+S2DW_ONLINE_MS = OFFLINE_AFTER_MS
 S2DW_FUTURE_MS = 5 * 1000
 S2DW_MAX_ID = 20
 MAX_CHECK_GAP_MS = 130 * 1000
@@ -52,6 +52,10 @@ S2DW_STATIONS = {
         "path": (
             "/public/s2dw/status.json" if number == 2
             else f"/public/s2dw{number:02d}/status.json"
+        ),
+        "points_path": (
+            "/public/s2dw/points.json" if number == 2
+            else f"/public/s2dw{number:02d}/points.json"
         ),
     }
     for number in range(1, S2DW_MAX_ID + 1)
@@ -229,11 +233,12 @@ def read_station(config, now_ms):
 
 
 def s2dw_presence(status, now_ms):
-    """Match the s2dw.html menu: fresh delivery AND sensor time, no offline flag."""
+    """Five-minute offline grace; fresh advancing data required for recovery."""
     if status is None:
-        return False, None, None
+        status = {}
     if not isinstance(status, dict):
         raise ValueError("Invalid S2DW status")
+
     def timestamp(field):
         try:
             value = float(status.get(field) or 0)
@@ -243,24 +248,31 @@ def s2dw_presence(status, now_ms):
 
     updated_ms = timestamp("updated_ms")
     data_ms = timestamp("station_time_ms")
-    online = (
-        updated_ms is not None and data_ms is not None
+    if any(ts is not None and ts > now_ms + S2DW_FUTURE_MS
+           for ts in (updated_ms, data_ms)):
+        raise ValueError("S2DW timestamp is too far in the future")
+
+    # A transient offline flag must not bypass the five-minute grace period.
+    ages = [now_ms - ts for ts in (updated_ms, data_ms) if ts is not None]
+    stale = any(age >= S2DW_ONLINE_MS for age in ages)
+    present = updated_ms is not None and data_ms is not None
+    fresh = (
+        present and not stale
+        and all(age <= RECOVERY_FRESH_MS for age in ages)
         and all(status.get(flag) is not False for flag in
                 ("station_online", "device_online", "serial_online"))
-        and -S2DW_FUTURE_MS <= now_ms - updated_ms < S2DW_ONLINE_MS
-        and -S2DW_FUTURE_MS <= now_ms - data_ms < S2DW_ONLINE_MS
     )
-    return online, data_ms, updated_ms
+    return stale, present, fresh, data_ms, updated_ms
 
 
 def fetch_s2dw_status(config):
-    # Read status only, never the larger waveform buffers.
     status = get_json(DB + config["path"])
-    return s2dw_presence(status, int(time.time() * 1000))
+    observed_ms = int(time.time() * 1000)
+    return observed_ms, s2dw_presence(status, observed_ms)
 
 
 def check_s2dw_stations(token, previous, current, recovery):
-    """Notify on observed menu transitions; unused IDs remain silent."""
+    """Independent five-minute debounce for all S2DW IDs; unused IDs stay silent."""
     had_error = False
     with ThreadPoolExecutor(max_workers=10) as executor:
         pending = {
@@ -268,40 +280,68 @@ def check_s2dw_stations(token, previous, current, recovery):
             for key, config in S2DW_STATIONS.items()
         }
         for key, future in pending.items():
-            label = S2DW_STATIONS[key]["label"]
+            config = S2DW_STATIONS[key]
+            label = config["label"]
             try:
-                online, data_ms, updated_ms = future.result()
+                now_ms, (stale, present, fresh, data_ms, updated_ms) = future.result()
                 old = previous.get(key)
-                recovery.pop(key, None)  # no legacy five-minute recovery for S2DW
-                new = "online" if online else "offline"
-                # Never send an initial offline alert for a not-yet-used ID.
-                if old is None and not online:
-                    continue
-                if old == new:
-                    print(f"{label}: still {new}")
+
+                if old == "online":
+                    if not stale and not present:
+                        # A missing node is not immediate evidence of an outage.
+                        checkpoint = recovery.get(key, {})
+                        since = checkpoint.get("missing_since_ms", now_ms)
+                        recovery[key] = {"missing_since_ms": since}
+                        stale = now_ms - since >= OFFLINE_AFTER_MS
+                    else:
+                        recovery.pop(key, None)
+                    if not stale:
+                        print(f"{label}: still online (5-minute grace)")
+                        continue
+
+                    last_ms = min(ts for ts in (data_ms, updated_ms) if ts is not None) if (
+                        data_ms is not None or updated_ms is not None) else None
+                    age_ms = None if last_ms is None else max(0, now_ms - last_ms)
+                    send_telegram(token, offline_text(label, last_ms, age_ms, now_ms))
+                    current[key] = "offline"
+                    recovery.pop(key, None)
+                    print(f"{label}: notified offline after 5 minutes")
                     continue
 
-                detected_ms = int(time.time() * 1000)
-                age_ms = None if data_ms is None else max(0, detected_ms - data_ms)
-                if online:
-                    message = (
-                        f"🟢 {label} онлайн\n"
-                        f"Дані знову доступні на сторінці S2DW.\n"
-                        f"Нові дані: {fmt_time(data_ms)}\n"
-                        f"Виявлено: {fmt_time(detected_ms)}"
-                    )
-                else:
-                    message = (
-                        f"🔴 {label} офлайн\n"
-                        f"Сенсор зник зі списку онлайн-станцій.\n"
-                        f"Останні дані: {fmt_time(data_ms)}\n"
-                        f"Виявлено: {fmt_time(detected_ms)}"
-                    )
-                send_telegram(token, message)
-                current[key] = new
-                print(f"{label}: notified {new}")
+                # An absent/unconfigured sensor must never send an initial offline alert.
+                if not fresh:
+                    recovery.pop(key, None)
+                    continue
+
+                checkpoint, verified = recovery_check(
+                    recovery.get(key), now_ms=now_ms,
+                    data_ms=data_ms, updated_ms=updated_ms
+                )
+                recovery[key] = checkpoint
+                elapsed = now_ms - checkpoint["start_ms"]
+                if not verified:
+                    print(f"{label}: recovery {elapsed / 60000:.1f}/5.0 min; no alert yet")
+                    continue
+
+                if not has_five_minute_sample_coverage(config, data_ms):
+                    recovery.pop(key, None)
+                    print(f"{label}: incomplete five-minute sample history; recovery reset")
+                    continue
+
+                send_telegram(
+                    token,
+                    f"🟢 {label} онлайн\n"
+                    f"Передача даних стабільна щонайменше 5 хвилин.\n"
+                    f"Нові дані: {fmt_time(data_ms)}\n"
+                    f"Виявлено: {fmt_time(now_ms)}\n"
+                    f"Затримка даних: {max(0, now_ms - data_ms) / 1000:.1f} с"
+                )
+                current[key] = "online"
+                recovery.pop(key, None)
+                print(f"{label}: notified online after verified 5 minutes")
             except Exception as exc:
-                # Network/API errors are not evidence of a sensor going offline.
+                # Network/API errors are not proof of a sensor outage or recovery.
+                recovery.pop(key, None)
                 print(f"{label}: check failed: {exc}", file=sys.stderr)
                 had_error = True
     return had_error
