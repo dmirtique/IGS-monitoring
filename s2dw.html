@@ -8,21 +8,78 @@
 <style>
 :root{color-scheme:dark;--bg:#08111f;--panel:#101b2e;--panel2:#0c1728;--text:#edf4ff;--muted:#94a7c5;--border:#263a5c;--ok:#3ddc97;--bad:#ff6b78}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
-.wrap{width:min(1540px,calc(100% - 28px));margin:auto;padding:18px 0 34px}.top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px;margin-bottom:14px}h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}.meta{color:var(--muted);font-size:14px}.controls{display:flex;flex-wrap:wrap;gap:9px;align-items:center}.badge,.control{min-height:38px;display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--border);border-radius:10px;background:var(--panel);font-size:14px}.control select{border:0;background:transparent;color:var(--text);font:inherit}.dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
+.wrap{width:min(1540px,calc(100% - 28px));margin:auto;padding:18px 0 34px}.top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px;margin-bottom:14px}h1{margin:0 0 5px;font-size:clamp(21px,2vw,29px)}.meta{color:var(--muted);font-size:14px}.controls{display:flex;flex-wrap:wrap;gap:9px;align-items:center}.badge,.control{min-height:38px;display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--border);border-radius:10px;background:var(--panel);font-size:14px}.control select{border:0;background:transparent;color:var(--text);font:inherit;max-width:100%}.control select option{background:var(--panel);color:var(--text)}.station-control{border-color:#446a9c}.station-control select{font-weight:650;min-width:140px}.control select:disabled{opacity:.7}.dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
 .summary{display:grid;grid-template-columns:repeat(3,minmax(170px,1fr));gap:10px;margin-bottom:14px}.summary-item{padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel)}.label{color:var(--muted);font-size:12px;margin-bottom:4px}.value{font-size:15px;font-weight:650}.stack{display:grid;gap:14px}.card{padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--panel)}.head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin-bottom:10px}.title h2{margin:0 0 4px;font-size:18px}.unit{color:var(--muted);font-size:13px}.stats{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px;flex:1 1 900px}.stat{padding:8px 10px;border:1px solid rgba(118,149,192,.22);border-radius:9px;background:var(--panel2);min-width:0}.stat-label{color:var(--muted);font-size:11px;margin-bottom:3px}.stat-value{font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chart-box{height:340px}.footer{margin-top:13px;color:var(--muted);font-size:12px;text-align:center}
 @media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(3,1fr)}}@media(max-width:650px){.summary{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.chart-box{height:270px}}
 </style>
 </head>
 <body><div class="wrap">
 <div class="top"><div><h1>Онлайн-моніторинг S2DW</h1><div class="meta" id="meta">Підключення до Firebase…</div></div>
-<div class="controls"><label class="control">Інтервал: <select id="window"><option value="10">10 секунд</option><option value="60" selected>1 хвилина</option><option value="300">5 хвилин</option></select></label><label class="control"><input type="checkbox" id="pause"> Пауза</label><div class="badge"><span class="dot" id="dot"></span><span id="statusText">Очікування даних…</span></div></div></div>
+<div class="controls"><label class="control station-control">Акселерометр: <select id="stationSelect" aria-label="Вибір онлайн-акселерометра" disabled><option value="">Пошук станцій…</option></select></label><label class="control">Інтервал: <select id="window"><option value="10">10 секунд</option><option value="60" selected>1 хвилина</option><option value="300">5 хвилин</option></select></label><label class="control"><input type="checkbox" id="pause"> Пауза</label><div class="badge"><span class="dot" id="dot"></span><span id="statusText">Очікування даних…</span></div></div></div>
 <section class="summary"><div class="summary-item"><div class="label">Час оновлення (ПК)</div><div class="value" id="stationTime">—</div></div><div class="summary-item"><div class="label">Частота дискретизації</div><div class="value" id="sampleRate">—</div></div><div class="summary-item"><div class="label">Останнє оновлення</div><div class="value" id="age">—</div></div></section>
 <main class="stack" id="stack"></main>
-<div class="footer" id="footer">На сайт надходить 1 пакет/с; повний потік 200 Гц зберігається локально у CSV.</div>
+<div class="footer" id="footer">На сайт надходить 1 пакет/с; повний потік зберігається локально.</div>
 </div>
 <script>
 const DB="https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app";
-const DATA_ROOT="/public/s2dw";
+// №02 retains its legacy Firebase path. New loggers must use these separate roots.
+const STATIONS=[
+ {id:"02",root:"/public/s2dw"},
+ {id:"03",root:"/public/s2dw03"},
+ {id:"04",root:"/public/s2dw04"},
+ {id:"05",root:"/public/s2dw05"}
+];
+const ONLINE_MS=30000, FUTURE_MS=5000, DISCOVERY_MS=5000;
+let selectedId="", discoveryBusy=false, discoveryDone=false, discoveryFailed=false;
+let stationStatuses=new Map();
+const stationSelect=document.getElementById("stationSelect");
+function isOnline(s,now=Date.now()){
+ if(!s||s.station_online===false||s.device_online===false||s.serial_online===false)return false;
+ const upload=Number(s.updated_ms),data=Number(s.station_time_ms);
+ return upload>0&&data>0&&now-upload>=-FUTURE_MS&&now-data>=-FUTURE_MS&&now-upload<ONLINE_MS&&now-data<ONLINE_MS;
+}
+function activeStation(){return STATIONS.find(s=>s.id===selectedId)}
+function resetStation(){
+ closeStreams();pointsBySlot.clear();status={};dirty=true;
+ for(const chart of Object.values(charts)){for(const ds of chart.data.datasets)ds.data=[];chart.update("none")}
+}
+function chooseStation(id){
+ if(id===selectedId)return;
+ resetStation();selectedId=id;stationSelect.value=id;
+ status=stationStatuses.get(id)||{};dirty=true;
+ if(id&&!paused&&!document.hidden)connect();
+ render();
+}
+function refreshStationMenu(){
+ const online=STATIONS.filter(s=>isOnline(stationStatuses.get(s.id)));
+ const next=online.some(s=>s.id===selectedId)?selectedId:(online[0]?.id||"");
+ const options=online.map(s=>({value:s.id,label:"S2DW №"+s.id+" — онлайн"}));
+ if(!options.length)options.push({value:"",label:!discoveryDone?"Пошук станцій…":discoveryFailed?"Статуси недоступні":"Немає онлайн-станцій"});
+ const signature=JSON.stringify(options);
+ if(stationSelect.dataset.signature!==signature){
+  stationSelect.replaceChildren(...options.map(o=>new Option(o.label,o.value)));
+  stationSelect.dataset.signature=signature;
+ }
+ stationSelect.disabled=!online.length;
+ chooseStation(next);stationSelect.value=next;
+}
+async function discoverStations(){
+ if(discoveryBusy||document.hidden)return;
+ discoveryBusy=true;
+ try{
+  const results=await Promise.allSettled(STATIONS.map(async s=>{
+   const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),4000);
+   try{
+    const res=await fetch(DB+s.root+"/status.json",{cache:"no-store",signal:controller.signal});
+    if(!res.ok)throw new Error("HTTP "+res.status);
+    return [s.id,await res.json()];
+   }finally{clearTimeout(timer)}
+  }));
+  discoveryFailed=results.every(r=>r.status==="rejected");
+  for(const r of results)if(r.status==="fulfilled")stationStatuses.set(r.value[0],r.value[1]);
+  discoveryDone=true;refreshStationMenu();dirty=true;
+ }finally{discoveryBusy=false}
+}
 const CHANNELS=["X","Y","Z"], G=9.80665;
 const pointsBySlot=new Map();
 let status={},pointSource=null,statusSource=null,dirty=true,paused=false;
@@ -43,7 +100,19 @@ function validRecord(r){return Array.isArray(r)&&r.length>=24&&Number.isFinite(N
 function applyPointEvent(ev){const p=JSON.parse(ev.data),path=p.path,data=p.data;if(path==="/"){pointsBySlot.clear();if(data)for(const[k,v]of Object.entries(data))if(validRecord(v))pointsBySlot.set(k,v)}else{const k=path.replace(/^\//,"");if(data===null)pointsBySlot.delete(k);else if(validRecord(data))pointsBySlot.set(k,data)}dirty=true}
 function applyPointPatch(ev){const p=JSON.parse(ev.data);if(p.path==="/"){for(const[k,v]of Object.entries(p.data||{})){if(v===null)pointsBySlot.delete(k);else if(validRecord(v))pointsBySlot.set(k,v)}}else applyPointEvent(ev);dirty=true}
 function applyStatus(ev){const p=JSON.parse(ev.data);if(p.path==="/")status=p.data||{};else status[p.path.replace(/^\//,"")]=p.data;dirty=true}
-function connect(){if(paused||document.hidden)return;closeStreams();pointSource=new EventSource(DB+DATA_ROOT+"/points.json");pointSource.addEventListener("put",applyPointEvent);pointSource.addEventListener("patch",applyPointPatch);pointSource.onerror=()=>{document.getElementById("meta").textContent="Повторне підключення до Firebase…"};statusSource=new EventSource(DB+DATA_ROOT+"/status.json");statusSource.addEventListener("put",applyStatus);statusSource.addEventListener("patch",applyStatus)}
+function connect(){
+ const station=activeStation();
+ if(!station||paused||document.hidden)return;
+ closeStreams();
+ const ps=new EventSource(DB+station.root+"/points.json");
+ pointSource=ps;
+ ps.addEventListener("put",e=>{if(pointSource===ps)applyPointEvent(e)});
+ ps.addEventListener("patch",e=>{if(pointSource===ps)applyPointPatch(e)});
+ ps.onerror=()=>{if(pointSource===ps){document.getElementById("meta").textContent="Повторне підключення до Firebase…"}};
+ const ss=new EventSource(DB+station.root+"/status.json");statusSource=ss;
+ ss.addEventListener("put",e=>{if(statusSource===ss)applyStatus(e)});
+ ss.addEventListener("patch",e=>{if(statusSource===ss)applyStatus(e)});
+}
 function closeStreams(){if(pointSource){pointSource.close();pointSource=null}if(statusSource){statusSource.close();statusSource=null}}
 function statBox(l,v,t=""){return`<div class="stat" title="${t||v}"><div class="stat-label">${l}</div><div class="stat-value">${v}</div></div>`}
 function render(){
@@ -92,22 +161,21 @@ const invalidFuture=dataValid&&stationMs>nowMs+30000;
 const uploadAge=uploadValid?(nowMs-uploadMs)/1000:null;
 const dataAge=dataValid?(nowMs-stationMs)/1000:null;
 const hasStatus=uploadValid||dataValid;
-const online=hasStatus&&uploadAge!==null&&uploadAge>=-30&&uploadAge<300&&
-             dataAge!==null&&dataAge>=-30&&dataAge<300;
+const online=!!selectedId&&isOnline(status,nowMs);
 document.getElementById("dot").classList.toggle("ok",online);
 document.getElementById("dot").classList.toggle("bad",hasStatus&&!online);
-document.getElementById("statusText").textContent=!hasStatus?"Очікування даних…":
- (invalidFuture?"Некоректний час даних":(online?"S2DW онлайн":"S2DW офлайн"));
-document.getElementById("meta").textContent=`BIGTREETECH S2DW V1.0 · LIS2DW12 · Firebase live · 1 пакет/с · до ${Number(status.live_points_per_bucket||100)} реальних точок/с · показано ${win} с`;
+document.getElementById("statusText").textContent=!selectedId?(discoveryDone?(discoveryFailed?"Статуси недоступні":"Немає онлайн-станцій"):"Пошук станцій…"):(!hasStatus?"Очікування даних…":(invalidFuture?"Некоректний час даних":(online?"S2DW №"+selectedId+" онлайн":"S2DW №"+selectedId+" офлайн")));
+document.getElementById("meta").textContent=selectedId?`S2DW №${selectedId} · LIS2DW12 · Firebase live · до ${Number(status.live_points_per_bucket||100)} реальних точок/с · показано ${win} с`:(discoveryDone?"Виберіть акселерометр, коли він з’явиться онлайн.":"Перевірка доступності акселерометрів…");
 document.getElementById("stationTime").textContent=uploadValid?new Date(uploadMs).toLocaleString("uk-UA"):"—";
 document.getElementById("sampleRate").textContent=status.sample_rate_hz?`${Number(status.sample_rate_hz).toLocaleString("uk-UA")} Гц`:"—";
 document.getElementById("age").textContent=uploadAge===null?"—":`${Math.max(0,uploadAge).toFixed(1)} с тому`;
-document.getElementById("footer").textContent=`На сайт: 1 пакет/с, до ${Number(status.live_points_per_bucket||100)} реальних точок/с. Повний потік 1600 Гц зберігається локально у HDF5 на диску D.`;
+document.getElementById("footer").textContent=selectedId?`На сайт: 1 пакет/с, до ${Number(status.live_points_per_bucket||100)} реальних точок/с. Повний потік зберігається локально.`:"Графіки з’являться автоматично після надходження свіжих даних." ;
 }
 document.getElementById("window").addEventListener("change",()=>{dirty=true});
 document.getElementById("pause").addEventListener("change",e=>{paused=e.target.checked;if(paused)closeStreams();else connect()});
-document.addEventListener("visibilitychange",()=>{if(document.hidden)closeStreams();else if(!paused)connect()});
-setInterval(()=>{dirty=true;render()},250);connect();
+stationSelect.addEventListener("change",e=>chooseStation(e.target.value));
+document.addEventListener("visibilitychange",()=>{if(document.hidden)closeStreams();else{discoverStations();if(!paused)connect()}});
+setInterval(()=>{dirty=true;render()},250);setInterval(refreshStationMenu,1000);setInterval(discoverStations,DISCOVERY_MS);discoverStations();
 </script>
 </body>
 </html>
