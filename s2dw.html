@@ -24,12 +24,13 @@
 const DB="https://igs-monitoring-default-rtdb.europe-west1.firebasedatabase.app";
 // №02 retains its legacy Firebase path. New loggers must use these separate roots.
 const STATIONS=Array.from({length:20},(_,i)=>{const id=String(i+1).padStart(2,"0");return {id,root:id==="02"?"/public/s2dw":"/public/s2dw"+id};});
-const ONLINE_MS=30000, FUTURE_MS=5000, DISCOVERY_MS=5000;
+const ONLINE_MS=300000, FUTURE_MS=5000, DISCOVERY_MS=5000;
 let selectedId="", discoveryBusy=false, discoveryDone=false, discoveryFailed=false;
 let stationStatuses=new Map();
 const stationSelect=document.getElementById("stationSelect");
 function isOnline(s,now=Date.now()){
- if(!s||s.station_online===false||s.device_online===false||s.serial_online===false)return false;
+ // A temporary disconnect flag must not remove a station during the 5-minute grace period.
+ if(!s)return false;
  const upload=Number(s.updated_ms),data=Number(s.station_time_ms);
  return upload>0&&data>0&&now-upload>=-FUTURE_MS&&now-data>=-FUTURE_MS&&now-upload<ONLINE_MS&&now-data<ONLINE_MS;
 }
