@@ -1,9 +1,9 @@
 {
   "mag": "offline",
   "s2dw": "offline",
-  "s2dw03": "offline",
-  "s2dw04": "offline",
-  "s2dw05": "offline",
+  "s2dw03": "online",
+  "s2dw04": "online",
+  "s2dw05": "online",
   "st107": "offline",
-  "zir8": "offline"
+  "zir8": "online"
 }
