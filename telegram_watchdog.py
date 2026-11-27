@@ -4,6 +4,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -12,6 +13,9 @@ CHAT_ID = "-1004425577425"
 OFFLINE_AFTER_MS = 5 * 60 * 1000
 ONLINE_CONFIRM_MS = 5 * 60 * 1000
 RECOVERY_FRESH_MS = 90 * 1000
+S2DW_ONLINE_MS = 30 * 1000
+S2DW_FUTURE_MS = 5 * 1000
+S2DW_MAX_ID = 20
 MAX_CHECK_GAP_MS = 130 * 1000
 RECOVERY_PROGRESS_SLACK_MS = 40 * 1000
 STATE_FILE = ".watchdog_state.json"
@@ -20,7 +24,7 @@ RECOVERY_FILE = ".watchdog_recovery.json"  # Local runner checkpoint; not commit
 KYIV_TZ = ZoneInfo("Europe/Kyiv")
 
 # These are the same Firebase status nodes and timestamps used by the pages.
-# Therefore the page and Telegram watchdog switch offline on the same 5-minute rule.
+# Legacy stations keep their original policy; S2DW matches the web selector.
 STATIONS = {
     "zir8": {
         "label": "ST106",
@@ -39,13 +43,18 @@ STATIONS = {
         "path": "/public/mag/status.json",
         "timestamp_field": "updated_ms",
     },
-    "s2dw": {
-        "label": "S2DW",
-        "path": "/public/s2dw/status.json",
-        "timestamp_field": "updated_ms",
-        "data_field": "station_time_ms",
-        "points_path": "/public/s2dw/points.json",
-    },
+}
+
+# The old №02 state key and Firebase root remain unchanged.
+S2DW_STATIONS = {
+    ("s2dw" if number == 2 else f"s2dw{number:02d}"): {
+        "label": f"S2DW №{number:02d}",
+        "path": (
+            "/public/s2dw/status.json" if number == 2
+            else f"/public/s2dw{number:02d}/status.json"
+        ),
+    }
+    for number in range(1, S2DW_MAX_ID + 1)
 }
 
 
@@ -219,6 +228,85 @@ def read_station(config, now_ms):
     return data_ms, age_ms, raw_state, updated_ms, recovery_fresh
 
 
+def s2dw_presence(status, now_ms):
+    """Match the s2dw.html menu: fresh delivery AND sensor time, no offline flag."""
+    if status is None:
+        return False, None, None
+    if not isinstance(status, dict):
+        raise ValueError("Invalid S2DW status")
+    def timestamp(field):
+        try:
+            value = float(status.get(field) or 0)
+            return int(value) if 0 < value < float("inf") else None
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    updated_ms = timestamp("updated_ms")
+    data_ms = timestamp("station_time_ms")
+    online = (
+        updated_ms is not None and data_ms is not None
+        and all(status.get(flag) is not False for flag in
+                ("station_online", "device_online", "serial_online"))
+        and -S2DW_FUTURE_MS <= now_ms - updated_ms < S2DW_ONLINE_MS
+        and -S2DW_FUTURE_MS <= now_ms - data_ms < S2DW_ONLINE_MS
+    )
+    return online, data_ms, updated_ms
+
+
+def fetch_s2dw_status(config):
+    # Read status only, never the larger waveform buffers.
+    status = get_json(DB + config["path"])
+    return s2dw_presence(status, int(time.time() * 1000))
+
+
+def check_s2dw_stations(token, previous, current, recovery):
+    """Notify on observed menu transitions; unused IDs remain silent."""
+    had_error = False
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        pending = {
+            key: executor.submit(fetch_s2dw_status, config)
+            for key, config in S2DW_STATIONS.items()
+        }
+        for key, future in pending.items():
+            label = S2DW_STATIONS[key]["label"]
+            try:
+                online, data_ms, updated_ms = future.result()
+                old = previous.get(key)
+                recovery.pop(key, None)  # no legacy five-minute recovery for S2DW
+                new = "online" if online else "offline"
+                # Never send an initial offline alert for a not-yet-used ID.
+                if old is None and not online:
+                    continue
+                if old == new:
+                    print(f"{label}: still {new}")
+                    continue
+
+                detected_ms = int(time.time() * 1000)
+                age_ms = None if data_ms is None else max(0, detected_ms - data_ms)
+                if online:
+                    message = (
+                        f"🟢 {label} онлайн\n"
+                        f"Дані знову доступні на сторінці S2DW.\n"
+                        f"Нові дані: {fmt_time(data_ms)}\n"
+                        f"Виявлено: {fmt_time(detected_ms)}"
+                    )
+                else:
+                    message = (
+                        f"🔴 {label} офлайн\n"
+                        f"Сенсор зник зі списку онлайн-станцій.\n"
+                        f"Останні дані: {fmt_time(data_ms)}\n"
+                        f"Виявлено: {fmt_time(detected_ms)}"
+                    )
+                send_telegram(token, message)
+                current[key] = new
+                print(f"{label}: notified {new}")
+            except Exception as exc:
+                # Network/API errors are not evidence of a sensor going offline.
+                print(f"{label}: check failed: {exc}", file=sys.stderr)
+                had_error = True
+    return had_error
+
+
 def main():
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
@@ -313,6 +401,8 @@ def main():
         except Exception as exc:
             print(f"{label}: check failed: {exc}", file=sys.stderr)
             had_error = True
+
+    had_error = check_s2dw_stations(token, previous, current, recovery) or had_error
 
     # Persist only confirmed online/offline transitions to Git; local pending
     # does not generate a commit or trigger unnecessary Render deployments.
